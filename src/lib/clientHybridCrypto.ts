@@ -39,7 +39,6 @@ export async function initCryptoSystem(): Promise<boolean> {
     // 检查是否已有公钥
     const existingKey = getRSAPublicKey();
     if (existingKey) {
-      console.log("已从本地存储加载RSA公钥");
       return true;
     }
 
@@ -62,7 +61,6 @@ export async function initCryptoSystem(): Promise<boolean> {
 
     // 保存公钥
     setRSAPublicKey(data.publicKey);
-    console.log("成功获取并保存RSA公钥");
     return true;
   } catch (error) {
     console.error("初始化加密系统失败:", error);
@@ -111,7 +109,6 @@ function uint8ArrayToWordArray(u8arr: Uint8Array): CryptoJS.lib.WordArray {
  */
 async function rsaEncrypt(data: Uint8Array, publicKey: string): Promise<Uint8Array> {
   try {
-    console.log("RSA加密开始...");
     // 将PEM格式的公钥转换为ArrayBuffer
     // 移除头尾和换行符，并进行Base64解码
     const pemHeader = "-----BEGIN PUBLIC KEY-----";
@@ -127,9 +124,6 @@ async function rsaEncrypt(data: Uint8Array, publicKey: string): Promise<Uint8Arr
     for (let i = 0; i < binaryDer.length; i++) {
       der[i] = binaryDer.charCodeAt(i);
     }
-
-    // 确保公钥有效
-    console.log("公钥长度:", der.length);
     
     // 导入公钥 - 明确指定SHA-256哈希算法
     const importedKey = await window.crypto.subtle.importKey(
@@ -142,8 +136,6 @@ async function rsaEncrypt(data: Uint8Array, publicKey: string): Promise<Uint8Arr
       false,
       ["encrypt"]
     );
-    
-    console.log("公钥导入成功");
 
     // 加密数据
     const encryptedBuffer = await window.crypto.subtle.encrypt(
@@ -154,7 +146,6 @@ async function rsaEncrypt(data: Uint8Array, publicKey: string): Promise<Uint8Arr
       data
     );
 
-    console.log("RSA加密完成, 加密后长度:", encryptedBuffer.byteLength);
     return new Uint8Array(encryptedBuffer);
   } catch (error) {
     console.error("RSA加密失败:", error);
@@ -168,19 +159,16 @@ async function rsaEncrypt(data: Uint8Array, publicKey: string): Promise<Uint8Arr
  */
 export async function encryptData(data: unknown): Promise<ArrayBuffer> {
   try {
-    console.log("开始混合加密...");
     const publicKey = getRSAPublicKey();
     if (!publicKey) {
       throw new Error("未设置RSA公钥，请先初始化加密系统");
     }
-    console.log("获取到RSA公钥");
 
     // 将数据转换为JSON字符串
     const jsonStr = typeof data === "string" ? data : JSON.stringify(data);
     
     // 生成随机AES密钥 (256位/32字节)
     const aesKey = CryptoJS.lib.WordArray.random(32);
-    console.log("生成AES密钥，长度:", aesKey.sigBytes, "字节");
     
     // 生成随机IV (16字节)
     const iv = CryptoJS.lib.WordArray.random(IV_LENGTH);
@@ -194,15 +182,12 @@ export async function encryptData(data: unknown): Promise<ArrayBuffer> {
     
     // 获取加密后的数据
     const encryptedContent = encrypted.ciphertext;
-    console.log("AES加密完成，加密数据长度:", encryptedContent.sigBytes, "字节");
     
     // 将AES密钥转换为Uint8Array
     const aesKeyBytes = wordArrayToUint8Array(aesKey);
-    console.log("AES密钥Uint8Array长度:", aesKeyBytes.length);
     
     // 使用RSA公钥加密AES密钥
     const encryptedAesKey = await rsaEncrypt(aesKeyBytes, publicKey);
-    console.log("RSA加密密钥长度:", encryptedAesKey.length);
     
     // 创建完整的加密数据包
     // 格式：协议版本(1字节) + 加密密钥长度(4字节) + 加密密钥 + IV(16字节) + 加密数据
@@ -234,7 +219,6 @@ export async function encryptData(data: unknown): Promise<ArrayBuffer> {
       headerSize + encryptedAesKey.length + ivBytes.length
     );
     
-    console.log("最终混合加密数据长度:", resultBuffer.byteLength, "字节");
     return resultBuffer;
   } catch (error) {
     console.error("客户端混合加密失败:", error);

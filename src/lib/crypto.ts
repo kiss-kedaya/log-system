@@ -80,10 +80,7 @@ export function encrypt(data: unknown): Buffer {
     // 组合IV和加密数据，直接返回Buffer
     const result = Buffer.concat([iv, encrypted]);
 
-    // 打印使用的算法信息（调试用）
-    console.log(`使用算法: ${algorithm}, IV长度: ${iv.length}`);
-
-    return result;
+        return result;
   } catch (error) {
     console.error("加密失败:", error);
     throw new Error("加密数据失败");

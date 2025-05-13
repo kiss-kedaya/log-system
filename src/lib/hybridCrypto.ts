@@ -19,46 +19,35 @@ import {
  */
 export function hybridDecrypt(encryptedData: Buffer): unknown {
   try {
-    console.log("开始服务器端混合解密...");
-    console.log("收到加密数据总长度:", encryptedData.length, "字节");
-
     // 读取协议版本
     const version = encryptedData.readUInt8(0);
-    console.log("协议版本:", version);
     if (version !== PROTOCOL_VERSION) {
       throw new Error(`不支持的加密协议版本: ${version}`);
     }
 
     // 读取RSA加密的AES密钥长度
     const encryptedKeySize = encryptedData.readUInt32BE(1);
-    console.log("加密AES密钥长度:", encryptedKeySize, "字节");
 
     // 提取RSA加密的AES密钥
     const encryptedAesKey = encryptedData.slice(
       1 + ENCRYPTED_AES_KEY_SIZE_LENGTH,
       1 + ENCRYPTED_AES_KEY_SIZE_LENGTH + encryptedKeySize
     );
-    console.log("提取的加密AES密钥长度:", encryptedAesKey.length, "字节");
 
     // 计算IV的起始位置
     const ivPosition = 1 + ENCRYPTED_AES_KEY_SIZE_LENGTH + encryptedKeySize;
-    console.log("IV起始位置:", ivPosition);
 
     // 提取AES IV
     const iv = encryptedData.slice(ivPosition, ivPosition + IV_LENGTH);
-    console.log("IV长度:", iv.length, "字节");
 
     // 提取AES加密的数据
     const encryptedContent = encryptedData.slice(ivPosition + IV_LENGTH);
-    console.log("加密内容长度:", encryptedContent.length, "字节");
 
     // 获取服务器的RSA私钥
     const privateKey = getPrivateKey();
-    console.log("从环境变量获取到私钥");
 
     try {
       // 使用RSA私钥解密AES密钥
-      console.log("尝试RSA解密AES密钥...");
       const aesKey = crypto.privateDecrypt(
         {
           key: privateKey,
@@ -67,14 +56,11 @@ export function hybridDecrypt(encryptedData: Buffer): unknown {
         },
         encryptedAesKey
       );
-      console.log("RSA解密成功，AES密钥长度:", aesKey.length, "字节");
 
       // 使用解密出的AES密钥和IV解密数据
-      console.log("尝试AES解密数据...");
       const decipher = crypto.createDecipheriv("aes-256-cbc", aesKey, iv);
       let decrypted = decipher.update(encryptedContent);
       decrypted = Buffer.concat([decrypted, decipher.final()]);
-      console.log("AES解密成功，解密后数据长度:", decrypted.length, "字节");
 
       // 转换为字符串并尝试解析JSON
       const decryptedText = decrypted.toString("utf8");

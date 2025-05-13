@@ -16,11 +16,8 @@ export function hasExistingKeys(): boolean {
 export function generateRSAKeyPair() {
   // 检查密钥是否已存在于环境变量中
   if (hasExistingKeys()) {
-    console.log('RSA密钥对已存在于环境变量中，跳过生成步骤');
     return;
   }
-
-  console.log('生成新的RSA密钥对...');
   
   // 生成2048位RSA密钥对
   const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
@@ -40,9 +37,6 @@ export function generateRSAKeyPair() {
   // 需要在Vercel仪表板中手动设置
   process.env.RSA_PRIVATE_KEY = privateKey;
   process.env.RSA_PUBLIC_KEY = publicKey;
-  
-  console.log('RSA密钥对生成成功（开发环境）');
-  console.log('警告：在生产环境(Vercel)中，请在环境变量中手动设置RSA_PRIVATE_KEY和RSA_PUBLIC_KEY');
 }
 
 /**

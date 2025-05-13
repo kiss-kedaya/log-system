@@ -22,7 +22,6 @@ export async function initDatabase() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `;
-    console.log("数据库表初始化成功");
   } catch (error) {
     console.error("数据库表初始化失败:", error);
     throw error;

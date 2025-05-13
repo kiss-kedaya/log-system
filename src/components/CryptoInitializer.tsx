@@ -12,7 +12,6 @@ export function CryptoInitializer() {
       try {
         const success = await initCryptoSystem();
         if (success) {
-          console.log("加密系统初始化成功");
           setInitialized(true);
         } else {
           setError("加密系统初始化失败");
