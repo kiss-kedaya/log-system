@@ -46,12 +46,18 @@ export async function initCryptoSystem(): Promise<boolean> {
     // 从服务器获取公钥
     const response = await fetch('/api/initKeys');
     if (!response.ok) {
-      throw new Error('获取RSA公钥失败');
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error || `服务器响应状态码: ${response.status}`;
+      throw new Error(`获取RSA公钥失败: ${errorMessage}`);
     }
 
     const data = await response.json();
     if (!data.success || !data.publicKey) {
-      throw new Error('获取RSA公钥失败: ' + (data.error || '未知错误'));
+      throw new Error(
+        '获取RSA公钥失败: ' + 
+        (data.message || data.error || '未知错误') + 
+        '。请确保服务器已配置RSA_PRIVATE_KEY和RSA_PUBLIC_KEY环境变量。'
+      );
     }
 
     // 保存公钥
@@ -60,6 +66,8 @@ export async function initCryptoSystem(): Promise<boolean> {
     return true;
   } catch (error) {
     console.error("初始化加密系统失败:", error);
+    // 显示更友好的错误信息
+    alert("无法初始化加密系统: " + (error as Error).message);
     return false;
   }
 }
