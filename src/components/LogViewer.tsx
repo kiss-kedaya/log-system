@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { decryptData } from "@/lib/clientHybridCrypto";
+import { fetchLogs, deleteLog, bulkDeleteLogs } from "@/lib/apiClient";
+import { useRouter } from "next/navigation";
 
 type Log = {
   id: number;
@@ -25,12 +26,7 @@ type DeleteConfirmInfo = {
   isDeleting: boolean;
 };
 
-type ApiResponse = {
-  success: boolean;
-  data?: unknown;
-  error?: string;
-  message?: string;
-};
+
 
 // 新增：搜索过滤器类型
 type SearchFilters = {
@@ -40,6 +36,7 @@ type SearchFilters = {
 };
 
 export function LogViewer() {
+  const router = useRouter();
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,26 +69,16 @@ export function LogViewer() {
   const [isMouseInHoverCard, setIsMouseInHoverCard] = useState(false);
 
   // 获取日志数据
-  const fetchLogs = async () => {
+  const fetchLogsData = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/logs");
+      const response = await fetchLogs();
 
-      if (!response.ok) {
-        throw new Error("获取日志失败");
+      if (!response.success) {
+        throw new Error(response.error || "获取日志失败");
       }
 
-      // 获取二进制数据
-      const encryptedData = await response.arrayBuffer();
-
-      // 在客户端直接解密响应
-      const decryptedData = decryptData(encryptedData) as ApiResponse;
-
-      if (!decryptedData.success) {
-        throw new Error(decryptedData.error || "获取日志失败");
-      }
-
-      const logsData = (decryptedData.data as Log[]) || [];
+      const logsData = (response.data as Log[]) || [];
       setLogs(logsData);
       // 重置选中的日志列表
       setSelectedLogs([]);
@@ -115,8 +102,6 @@ export function LogViewer() {
       setLoading(false);
     }
   };
-
-
 
   // 切换日志展开/折叠状态
   const toggleExpand = (id: number) => {
@@ -184,25 +169,14 @@ export function LogViewer() {
       // 判断是单个删除还是批量删除
       if (Array.isArray(deleteConfirm.id)) {
         // 批量删除
-        const idsParam = deleteConfirm.id.join(',');
-        const response = await fetch(`/api/logs?ids=${idsParam}`, {
-          method: "DELETE",
-        });
+        const response = await bulkDeleteLogs(deleteConfirm.id);
 
-        if (!response.ok) {
-          // 获取二进制错误响应
-          const encryptedError = await response.arrayBuffer();
-          // 客户端直接解密错误响应
-          const errorData = decryptData(encryptedError) as ApiResponse;
-          throw new Error(errorData.error || "批量删除日志失败");
+        if (!response.success) {
+          throw new Error(response.error || "批量删除日志失败");
         }
 
-        // 获取并解密成功响应
-        const encryptedSuccess = await response.arrayBuffer();
-        const successData = decryptData(encryptedSuccess) as ApiResponse;
-
         // 删除成功
-        setDeleteSuccess(`已成功删除 ${(successData.data as {count: number})?.count || deleteConfirm.id.length} 条日志`);
+        setDeleteSuccess(`已成功删除 ${(response.data as {count: number})?.count || deleteConfirm.id.length} 条日志`);
 
         // 从本地状态中移除已删除的日志
         setLogs((prevLogs) => {
@@ -224,22 +198,11 @@ export function LogViewer() {
         }
       } else {
         // 单个删除
-        const response = await fetch(`/api/logs?id=${deleteConfirm.id}`, {
-          method: "DELETE",
-        });
+        const response = await deleteLog(deleteConfirm.id);
 
-        if (!response.ok) {
-          // 获取二进制错误响应
-          const encryptedError = await response.arrayBuffer();
-          // 客户端直接解密错误响应
-          const errorData = decryptData(encryptedError) as ApiResponse;
-          throw new Error(errorData.error || "删除日志失败");
+        if (!response.success) {
+          throw new Error(response.error || "删除日志失败");
         }
-
-        // 获取并解密成功响应
-        const encryptedSuccess = await response.arrayBuffer();
-        // 解密响应但不需要使用结果
-        decryptData(encryptedSuccess);
 
         // 删除成功
         setDeleteSuccess(`日志(ID: ${deleteConfirm.id})已成功删除`);
@@ -459,8 +422,14 @@ export function LogViewer() {
 
   // 页面加载时获取日志
   useEffect(() => {
-    fetchLogs();
+    fetchLogsData();
   }, []);
+
+  // 登出功能
+  const handleLogout = () => {
+    localStorage.removeItem("auth_token");
+    router.push("/login");
+  };
 
   return (
     <div className="space-y-6">
@@ -477,10 +446,16 @@ export function LogViewer() {
               </button>
             )}
             <button
-              onClick={fetchLogs}
+              onClick={fetchLogsData}
               className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
             >
               刷新
+            </button>
+            <button
+              onClick={handleLogout}
+              className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition"
+            >
+              登出
             </button>
           </div>
         </div>

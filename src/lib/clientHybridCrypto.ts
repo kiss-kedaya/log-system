@@ -2,7 +2,7 @@
 
 import CryptoJS from "crypto-js";
 import { IV_LENGTH, SERVER_AES_KEY } from "./cryptoConfig";
-import * as forge from 'node-forge';
+import * as forge from "node-forge";
 
 // 存储RSA公钥
 let rsaPublicKey: string | null = null;
@@ -108,38 +108,38 @@ function rsaEncrypt(data: Uint8Array, publicKey: string): Uint8Array {
   try {
     // 解析公钥
     const publicKeyObj = forge.pki.publicKeyFromPem(publicKey);
-    
+
     // 计算RSA密钥的字节长度
     const keyLength = Math.ceil(publicKeyObj.n.bitLength() / 8);
-    
+
     // 创建forge buffer并右填充数据
     const buffer = forge.util.createBuffer();
-    
+
     // 对齐数据长度 - 对于无填充模式，数据必须与模数长度完全相同
     // 注意：这里需要左填充0，因为RSA是大整数运算，低位在右侧
     const paddingLength = keyLength - data.length;
-    
+
     // 添加前导零填充
     for (let i = 0; i < paddingLength; i++) {
       buffer.putByte(0);
     }
-    
+
     // 添加实际数据
     for (let i = 0; i < data.length; i++) {
       buffer.putByte(data[i]);
     }
-    
+
     // 进行无填充RSA加密
-    const encrypted = publicKeyObj.encrypt(buffer.getBytes(), 'NONE');
-    
+    const encrypted = publicKeyObj.encrypt(buffer.getBytes(), "NONE");
+
     // 将加密结果转换为Uint8Array
     const resultBuffer = forge.util.createBuffer(encrypted);
     const result = new Uint8Array(keyLength);
-    
+
     for (let i = 0; i < keyLength; i++) {
       result[i] = resultBuffer.getInt(8);
     }
-    
+
     return result;
   } catch (error) {
     console.error("RSA加密失败:", error);
