@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { hybridDecrypt, hybridEncrypt } from "@/lib/hybridCrypto";
-import * as jose from 'jose';
+import * as jose from "jose";
 
 // 系统密钥，应该放在环境变量中
 const SYSTEM_SECRET_KEY = process.env.SYSTEM_SECRET_KEY || "kedaya";
@@ -54,10 +54,10 @@ export async function POST(request: NextRequest) {
     const encoder = new TextEncoder();
     // 将密钥转换为Uint8Array
     const jwtSecretKey = encoder.encode(JWT_SECRET);
-    
+
     // 创建JWT令牌
     const token = await new jose.SignJWT(payload)
-      .setProtectedHeader({ alg: 'HS256' })
+      .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime(TOKEN_EXPIRY)
       .sign(jwtSecretKey);

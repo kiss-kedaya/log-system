@@ -104,7 +104,7 @@ export default function LoginPage() {
       saveAuthToken(token);
 
       // 添加时间戳参数，避免缓存
-      window.location.href = "/" ;
+      window.location.href = "/";
     } catch (err) {
       console.error("[登录] 验证失败:", err);
       if (err instanceof Error) {
