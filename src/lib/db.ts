@@ -1,9 +1,9 @@
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
+import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-http";
 
 // 确保有环境变量 DATABASE_URL
 if (!process.env.DATABASE_URL) {
-  throw new Error('数据库连接URL未设置');
+  throw new Error("数据库连接URL未设置");
 }
 
 // 创建数据库连接
@@ -22,9 +22,9 @@ export async function initDatabase() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `;
-    console.log('数据库表初始化成功');
+    console.log("数据库表初始化成功");
   } catch (error) {
-    console.error('数据库表初始化失败:', error);
+    console.error("数据库表初始化失败:", error);
     throw error;
   }
-} 
+}

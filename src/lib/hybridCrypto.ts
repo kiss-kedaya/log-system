@@ -1,19 +1,19 @@
 import crypto from "crypto";
 import { getPrivateKey } from "./rsaUtils";
-import { 
-  IV_LENGTH, 
-  SERVER_AES_KEY, 
-  PROTOCOL_VERSION, 
-  ENCRYPTED_AES_KEY_SIZE_LENGTH 
+import {
+  IV_LENGTH,
+  SERVER_AES_KEY,
+  PROTOCOL_VERSION,
+  ENCRYPTED_AES_KEY_SIZE_LENGTH,
 } from "./cryptoConfig";
 
 /**
  * 服务器端混合解密
  * 处理客户端发来的RSA加密的AES密钥和AES加密的数据
- * 
- * 数据格式: 
+ *
+ * 数据格式:
  * | 协议版本(1字节) | 加密AES密钥长度(4字节) | RSA加密的AES密钥 | AES IV(16字节) | AES加密的数据 |
- * 
+ *
  * @param encryptedData 混合加密的完整数据
  * @returns 解密后的原始数据
  */
@@ -21,7 +21,7 @@ export function hybridDecrypt(encryptedData: Buffer): unknown {
   try {
     console.log("开始服务器端混合解密...");
     console.log("收到加密数据总长度:", encryptedData.length, "字节");
-    
+
     // 读取协议版本
     const version = encryptedData.readUInt8(0);
     console.log("协议版本:", version);
@@ -55,7 +55,7 @@ export function hybridDecrypt(encryptedData: Buffer): unknown {
     // 获取服务器的RSA私钥
     const privateKey = getPrivateKey();
     console.log("获取到私钥");
-    
+
     try {
       // 使用RSA私钥解密AES密钥
       console.log("尝试RSA解密AES密钥...");
@@ -63,7 +63,7 @@ export function hybridDecrypt(encryptedData: Buffer): unknown {
         {
           key: privateKey,
           padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-          oaepHash: 'sha256'  // 匹配客户端的SHA-256哈希算法
+          oaepHash: "sha256", // 匹配客户端的SHA-256哈希算法
         },
         encryptedAesKey
       );
@@ -75,7 +75,7 @@ export function hybridDecrypt(encryptedData: Buffer): unknown {
       let decrypted = decipher.update(encryptedContent);
       decrypted = Buffer.concat([decrypted, decipher.final()]);
       console.log("AES解密成功，解密后数据长度:", decrypted.length, "字节");
-      
+
       // 转换为字符串并尝试解析JSON
       const decryptedText = decrypted.toString("utf8");
       try {
@@ -96,7 +96,7 @@ export function hybridDecrypt(encryptedData: Buffer): unknown {
 /**
  * 服务器端加密（用于向客户端发送数据）
  * 使用固定密钥进行AES加密
- * 
+ *
  * @param data 要加密的数据
  * @returns 加密的完整数据
  */
@@ -104,12 +104,12 @@ export function hybridEncrypt(data: unknown): Buffer {
   try {
     // 将数据转换为JSON字符串
     const text = typeof data === "string" ? data : JSON.stringify(data);
-    
+
     // 创建传统的AES加密数据
     const iv = crypto.randomBytes(IV_LENGTH);
-    
+
     // 确保密钥长度正确 (AES-128需要16字节密钥)
-    const key = SERVER_AES_KEY.padEnd(16, '0').slice(0, 16);
+    const key = SERVER_AES_KEY.padEnd(16, "0").slice(0, 16);
     const aesKey = Buffer.from(key); // 使用固定的服务器密钥
 
     // 使用AES加密数据
@@ -123,4 +123,4 @@ export function hybridEncrypt(data: unknown): Buffer {
     console.error("加密失败:", error);
     throw new Error("加密数据失败");
   }
-} 
+}

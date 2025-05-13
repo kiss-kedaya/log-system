@@ -21,7 +21,9 @@ export async function POST(request: NextRequest) {
       });
     } else if (url.pathname.endsWith('/decrypt')) {
       // 解密请求
-      const encryptedData = await request.text();
+      const encryptedText = await request.text();
+      // 将字符串转换为Buffer
+      const encryptedData = Buffer.from(encryptedText, 'base64');
       const decryptedData = decrypt(encryptedData);
       
       return Response.json(decryptedData);
