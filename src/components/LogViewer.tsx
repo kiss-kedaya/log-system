@@ -33,6 +33,13 @@ type ApiResponse = {
   message?: string;
 };
 
+// 新增：搜索过滤器类型
+type SearchFilters = {
+  keyword: string;
+  startDate: string;
+  endDate: string;
+};
+
 export function LogViewer() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +60,13 @@ export function LogViewer() {
   const [selectedLogs, setSelectedLogs] = useState<number[]>([]);
   // 新增状态：是否全选
   const [selectAll, setSelectAll] = useState(false);
+
+  // 新增：搜索过滤器状态
+  const [searchFilters, setSearchFilters] = useState<SearchFilters>({
+    keyword: '',
+    startDate: '',
+    endDate: ''
+  });
 
   // 用于跟踪鼠标是否在悬浮框内
   const hoverCardRef = useRef<HTMLDivElement>(null);
@@ -322,6 +336,90 @@ export function LogViewer() {
     );
   };
 
+  // 新增：处理搜索过滤器变化
+  const handleSearchFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setSearchFilters(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // 新增：处理搜索过滤器重置
+  const handleResetFilters = () => {
+    setSearchFilters({
+      keyword: '',
+      startDate: '',
+      endDate: ''
+    });
+  };
+
+  // 新增：过滤日志函数
+  const filterLogs = (logs: Log[]) => {
+    return logs.filter(log => {
+      // 关键词过滤
+      if (searchFilters.keyword && !isLogMatchingKeyword(log, searchFilters.keyword)) {
+        return false;
+      }
+      
+      // 日期范围过滤
+      const logDate = new Date(log.created_at).getTime();
+      
+      // 开始日期过滤
+      if (searchFilters.startDate) {
+        const startDate = new Date(searchFilters.startDate).setHours(0, 0, 0, 0);
+        if (logDate < startDate) {
+          return false;
+        }
+      }
+      
+      // 结束日期过滤
+      if (searchFilters.endDate) {
+        const endDate = new Date(searchFilters.endDate).setHours(23, 59, 59, 999);
+        if (logDate > endDate) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  };
+
+  // 新增：检查日志是否包含关键词
+  const isLogMatchingKeyword = (log: Log, keyword: string) => {
+    const keywordLower = keyword.toLowerCase();
+    
+    // 检查ID
+    if (String(log.id).includes(keywordLower)) {
+      return true;
+    }
+    
+    // 检查日期
+    if (new Date(log.created_at).toLocaleString().toLowerCase().includes(keywordLower)) {
+      return true;
+    }
+    
+    // 检查日志内容
+    for (const key in log.data) {
+      const value = log.data[key];
+      if (value !== null && value !== undefined) {
+        if (typeof value === 'object') {
+          // 对象类型：转为JSON字符串进行搜索
+          if (JSON.stringify(value).toLowerCase().includes(keywordLower)) {
+            return true;
+          }
+        } else {
+          // 基本类型：转为字符串进行搜索
+          if (String(value).toLowerCase().includes(keywordLower)) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
+  };
+
   // 排序日志
   const sortedLogs = [...logs].sort((a, b) => {
     if (sortConfig.key === "id" || sortConfig.key === "created_at") {
@@ -360,6 +458,9 @@ export function LogViewer() {
     }
   });
 
+  // 新增：过滤并排序日志
+  const filteredAndSortedLogs = filterLogs(sortedLogs);
+
   // 页面加载时获取日志
   useEffect(() => {
     fetchLogs();
@@ -393,6 +494,67 @@ export function LogViewer() {
           </div>
         </div>
 
+        {/* 新增：搜索过滤器 */}
+        <div className="mb-6 bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+          <h3 className="text-md font-medium mb-3">搜索过滤</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label htmlFor="keyword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                关键词
+              </label>
+              <input
+                type="text"
+                id="keyword"
+                name="keyword"
+                value={searchFilters.keyword}
+                onChange={handleSearchFilterChange}
+                placeholder="搜索关键词..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                开始日期
+              </label>
+              <input
+                type="date"
+                id="startDate"
+                name="startDate"
+                value={searchFilters.startDate}
+                onChange={handleSearchFilterChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                结束日期
+              </label>
+              <input
+                type="date"
+                id="endDate"
+                name="endDate"
+                value={searchFilters.endDate}
+                onChange={handleSearchFilterChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              onClick={handleResetFilters}
+              className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition"
+            >
+              重置过滤器
+            </button>
+          </div>
+          {/* 新增：显示过滤结果统计 */}
+          {(searchFilters.keyword || searchFilters.startDate || searchFilters.endDate) && (
+            <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              过滤结果: {filteredAndSortedLogs.length} / {logs.length} 条日志
+            </div>
+          )}
+        </div>
+
         {/* 删除成功消息 */}
         {deleteSuccess && (
           <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
@@ -417,6 +579,8 @@ export function LogViewer() {
           </div>
         ) : logs.length === 0 ? (
           <div className="text-center py-8 text-gray-500">暂无日志数据</div>
+        ) : filteredAndSortedLogs.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">没有匹配的日志数据</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -461,7 +625,7 @@ export function LogViewer() {
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200">
-                {sortedLogs.map((log) => (
+                {filteredAndSortedLogs.map((log) => (
                   <tr
                     key={log.id}
                     className="hover:bg-gray-50 dark:hover:bg-gray-700"
