@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { initDatabase, sql } from "@/lib/db";
-import { hybridDecrypt, hybridEncrypt, DecryptionError } from "@/lib/hybridCrypto";
+import {
+  hybridDecrypt,
+  hybridEncrypt,
+  DecryptionError,
+} from "@/lib/hybridCrypto";
 import { generateRSAKeyPair } from "@/lib/rsaUtils";
 
 // 初始化数据库
@@ -15,37 +19,49 @@ try {
   console.error("RSA密钥生成失败:", error);
 }
 
+// 定义OpenSSL错误接口
+interface OpenSSLError extends Error {
+  code?: string;
+  library?: string;
+  reason?: string;
+}
+
 // 定义错误详情接口
 interface ErrorDetails {
   name?: string;
   message?: string;
   stack?: string;
   stage?: string;
-  originalError?: any;
-  [key: string]: any;
+  originalError?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 // 创建更详细的错误响应
-function createErrorResponse(status: number, errorMessage: string, errorDetails?: ErrorDetails) {
+function createErrorResponse(
+  status: number,
+  errorMessage: string,
+  errorDetails?: ErrorDetails
+) {
   const errorPayload = {
-    success: false, 
+    success: false,
     error: errorMessage,
-    errorDetails: errorDetails ? JSON.stringify(errorDetails) : undefined
+    errorDetails: errorDetails ? JSON.stringify(errorDetails) : undefined,
   };
-  
+
   try {
     // 尝试加密错误信息
     const encryptedError = hybridEncrypt(errorPayload);
-    return new Response(encryptedError, { 
-      status: status, 
-      headers: { "Content-Type": "application/octet-stream" } 
+    return new Response(encryptedError, {
+      status: status,
+      headers: { "Content-Type": "application/octet-stream" },
     });
-  } catch (encryptError: any) {
+  } catch (encryptError: unknown) {
     // 如果加密失败，则返回纯文本错误信息（应急方案）
     console.error("加密错误信息失败:", encryptError);
-    return new Response(JSON.stringify(errorPayload), { 
-      status: status, 
-      headers: { "Content-Type": "application/json" } 
+    const err = encryptError as Error;
+    return new Response(JSON.stringify(errorPayload), {
+      status: status,
+      headers: { "Content-Type": "application/json" },
     });
   }
 }
@@ -149,7 +165,7 @@ export async function GET(request: NextRequest) {
     try {
       // 加密日志数据
       const encryptedData = hybridEncrypt({ success: true, data: logs });
-      
+
       // 返回二进制数据
       return new Response(encryptedData, {
         status: 200,
@@ -157,29 +173,23 @@ export async function GET(request: NextRequest) {
           "Content-Type": "application/octet-stream",
         },
       });
-    } catch (encryptError: any) {
+    } catch (encryptError: unknown) {
       console.error("加密日志数据失败:", encryptError);
-      return createErrorResponse(
-        500, 
-        "加密日志数据失败", 
-        { 
-          name: encryptError.name, 
-          message: encryptError.message, 
-          stack: encryptError.stack 
-        }
-      );
+      const err = encryptError as Error;
+      return createErrorResponse(500, "加密日志数据失败", {
+        name: err.name,
+        message: err.message,
+        stack: err.stack,
+      });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("获取日志失败:", error);
-    return createErrorResponse(
-      500, 
-      "获取日志失败", 
-      { 
-        name: error.name, 
-        message: error.message, 
-        stack: error.stack 
-      }
-    );
+    const err = error as Error;
+    return createErrorResponse(500, "获取日志失败", {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    });
   }
 }
 
@@ -191,48 +201,49 @@ export async function POST(request: NextRequest) {
 
     // 将二进制数据转换为Buffer
     const buffer = Buffer.from(arrayBuffer);
-    
+
     let body;
     try {
       // 使用混合解密处理
       body = hybridDecrypt(buffer);
-    } catch (decryptError: any) {
+    } catch (decryptError: unknown) {
       console.error("混合解密失败:", decryptError);
-      
+
       // 检查是否是详细的解密错误
       if (decryptError instanceof DecryptionError) {
+        // 获取原始错误的属性（如果是OpenSSL错误）
+        const opensslError = decryptError.originalError as OpenSSLError;
         return createErrorResponse(
-          400, 
-          `解密请求数据失败: ${decryptError.message}`, 
-          { 
+          400,
+          `解密请求数据失败: ${decryptError.message}`,
+          {
             name: decryptError.name,
             message: decryptError.message,
             stage: decryptError.stage,
             originalError: {
-              name: decryptError.originalError?.name,
-              message: decryptError.originalError?.message,
-              code: decryptError.originalError?.code,
-              library: decryptError.originalError?.library,
-              reason: decryptError.originalError?.reason
-            }
+              name: opensslError?.name,
+              message: opensslError?.message,
+              code: opensslError?.code,
+              library: opensslError?.library,
+              reason: opensslError?.reason,
+            },
           }
         );
       }
-      
+
       // 一般性解密错误
-      return createErrorResponse(
-        400, 
-        "解密请求数据失败", 
-        { 
-          name: decryptError.name, 
-          message: decryptError.message, 
-          stack: decryptError.stack 
-        }
-      );
+      const genericError = decryptError as Error;
+      return createErrorResponse(400, "解密请求数据失败", {
+        name: genericError?.name,
+        message: genericError?.message,
+        stack: genericError?.stack,
+      });
     }
 
     if (!body || typeof body !== "object") {
-      return createErrorResponse(400, "无效的请求数据", { receivedType: typeof body });
+      return createErrorResponse(400, "无效的请求数据", {
+        receivedType: typeof body,
+      });
     }
 
     try {
@@ -253,29 +264,23 @@ export async function POST(request: NextRequest) {
         status: 201,
         headers: { "Content-Type": "application/octet-stream" },
       });
-    } catch (dbError: any) {
+    } catch (dbError: unknown) {
       console.error("数据库操作失败:", dbError);
-      return createErrorResponse(
-        500, 
-        "保存日志到数据库失败", 
-        { 
-          name: dbError.name, 
-          message: dbError.message, 
-          stack: dbError.stack 
-        }
-      );
+      const err = dbError as Error;
+      return createErrorResponse(500, "保存日志到数据库失败", {
+        name: err.name,
+        message: err.message,
+        stack: err.stack,
+      });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("保存日志失败:", error);
-    return createErrorResponse(
-      500, 
-      "保存日志失败", 
-      { 
-        name: error.name, 
-        message: error.message, 
-        stack: error.stack 
-      }
-    );
+    const err = error as Error;
+    return createErrorResponse(500, "保存日志失败", {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    });
   }
 }
 
@@ -296,7 +301,9 @@ export async function DELETE(request: NextRequest) {
         .filter((id) => !isNaN(id));
 
       if (idArray.length === 0) {
-        return createErrorResponse(400, "无效的日志ID参数", { receivedIds: ids });
+        return createErrorResponse(400, "无效的日志ID参数", {
+          receivedIds: ids,
+        });
       }
 
       try {
@@ -316,17 +323,14 @@ export async function DELETE(request: NextRequest) {
           status: 200,
           headers: { "Content-Type": "application/octet-stream" },
         });
-      } catch (dbError: any) {
+      } catch (dbError: unknown) {
         console.error("批量删除数据库操作失败:", dbError);
-        return createErrorResponse(
-          500, 
-          "批量删除日志失败", 
-          { 
-            name: dbError.name, 
-            message: dbError.message, 
-            stack: dbError.stack 
-          }
-        );
+        const err = dbError as Error;
+        return createErrorResponse(500, "批量删除日志失败", {
+          name: err.name,
+          message: err.message,
+          stack: err.stack,
+        });
       }
     } else if (id) {
       try {
@@ -338,7 +342,9 @@ export async function DELETE(request: NextRequest) {
 
         // 检查是否找到并删除了日志
         if (result.length === 0) {
-          return createErrorResponse(404, "未找到指定ID的日志", { requestedId: id });
+          return createErrorResponse(404, "未找到指定ID的日志", {
+            requestedId: id,
+          });
         }
 
         // 加密成功响应
@@ -352,31 +358,25 @@ export async function DELETE(request: NextRequest) {
           status: 200,
           headers: { "Content-Type": "application/octet-stream" },
         });
-      } catch (dbError: any) {
+      } catch (dbError: unknown) {
         console.error("删除日志数据库操作失败:", dbError);
-        return createErrorResponse(
-          500, 
-          "删除日志失败", 
-          { 
-            name: dbError.name, 
-            message: dbError.message, 
-            stack: dbError.stack 
-          }
-        );
+        const err = dbError as Error;
+        return createErrorResponse(500, "删除日志失败", {
+          name: err.name,
+          message: err.message,
+          stack: err.stack,
+        });
       }
     } else {
       return createErrorResponse(400, "缺少日志ID参数", { url: request.url });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("删除日志失败:", error);
-    return createErrorResponse(
-      500, 
-      "删除日志失败", 
-      { 
-        name: error.name, 
-        message: error.message, 
-        stack: error.stack 
-      }
-    );
+    const err = error as Error;
+    return createErrorResponse(500, "删除日志失败", {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    });
   }
 }
