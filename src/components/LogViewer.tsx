@@ -176,7 +176,7 @@ export function LogViewer() {
   // 监听搜索参数变化，重新获取日志
   useEffect(() => {
     fetchLogs();
-  }, [searchParams, fetchLogs]);
+  }, [searchParams]);
 
   // 添加新日志后刷新列表
   const handleLogAdded = () => {
@@ -438,7 +438,7 @@ export function LogViewer() {
   // 页面加载时获取日志
   useEffect(() => {
     fetchLogs();
-  }, [fetchLogs]);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -537,7 +537,7 @@ export function LogViewer() {
           <div className="mb-4 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded flex justify-between items-center dark:bg-blue-900 dark:border-blue-800 dark:text-blue-200">
             <div>
               当前搜索:
-              {searchParams.keyword && <span className="ml-1">关键词 &quot;{searchParams.keyword}&quot;</span>}
+              {searchParams.keyword && <span className="ml-1">关键词 "{searchParams.keyword}"</span>}
               {searchParams.startDate && <span className="ml-1">从 {searchParams.startDate}</span>}
               {searchParams.endDate && <span className="ml-1">到 {searchParams.endDate}</span>}
             </div>
