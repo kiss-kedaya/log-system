@@ -4,7 +4,7 @@ import CryptoJS from "crypto-js";
 import * as forge from "node-forge";
 
 const IV_LENGTH = Number(process.env.IV_LENGTH) || 16;
-const SERVER_AES_KEY = process.env.SERVER_AES_KEY || "defaultAESKey12";
+const SERVER_AES_KEY = process.env.SERVER_AES_KEY || "defaultAESKey123";
 
 // 存储RSA公钥
 let rsaPublicKey: string | null = null;
@@ -236,6 +236,8 @@ export function decryptData(encryptedBytes: ArrayBufferLike): unknown {
     const serverKey = SERVER_AES_KEY.padEnd(16, "0").slice(0, 16);
     const key = CryptoJS.enc.Utf8.parse(serverKey);
 
+    console.log("解密iv:", iv.toString(CryptoJS.enc.Base64));
+    console.log("解密密钥:", key.toString(CryptoJS.enc.Base64));
     // 解密
     const decrypted = CryptoJS.AES.decrypt(
       encrypted.toString(CryptoJS.enc.Base64),
