@@ -38,8 +38,7 @@ export default function LoginPage() {
       if (token) {
         // 确保cookie中也存在该令牌
         saveAuthToken(token);
-        // 添加时间戳参数，避免缓存
-        window.location.href = "/?t=" + Date.now();
+        window.location.href = "/";
       }
     } catch (err) {
       console.error("[登录页] 检查token时出错:", err);
@@ -105,7 +104,7 @@ export default function LoginPage() {
       saveAuthToken(token);
 
       // 添加时间戳参数，避免缓存
-      window.location.href = "/?t=" + Date.now();
+      window.location.href = "/" ;
     } catch (err) {
       console.error("[登录] 验证失败:", err);
       if (err instanceof Error) {

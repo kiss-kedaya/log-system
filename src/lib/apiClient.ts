@@ -7,6 +7,13 @@ type ApiResponse<T = unknown> = {
   message?: string;
 };
 
+// 日志类型定义
+export type Log = {
+  id: number;
+  data: Record<string, unknown>;
+  created_at: string;
+};
+
 /**
  * 通用API请求函数，自动处理加密/解密和认证
  */
@@ -22,7 +29,7 @@ export async function apiRequest<T = unknown>(
       throw new Error("未登录或会话已过期，请重新登录");
     }
 
-    let requestInit: RequestInit = {
+    const requestInit: RequestInit = {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -90,7 +97,7 @@ export async function apiRequest<T = unknown>(
  * 获取所有日志
  */
 export async function fetchLogs() {
-  return apiRequest<any[]>("/api/logs");
+  return apiRequest<Log[]>("/api/logs");
 }
 
 /**

@@ -1,8 +1,10 @@
 "use client";
 
 import CryptoJS from "crypto-js";
-import { IV_LENGTH, SERVER_AES_KEY } from "./cryptoConfig";
 import * as forge from "node-forge";
+
+const IV_LENGTH = Number(process.env.IV_LENGTH) || 16;
+const SERVER_AES_KEY = process.env.SERVER_AES_KEY || "defaultAESKey12";
 
 // 存储RSA公钥
 let rsaPublicKey: string | null = null;

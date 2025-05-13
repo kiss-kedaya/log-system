@@ -7,7 +7,7 @@ const SYSTEM_SECRET_KEY = process.env.SYSTEM_SECRET_KEY || "kedaya";
 // JWT密钥，用于签名令牌
 const JWT_SECRET = process.env.JWT_SECRET || "kedaya";
 // 令牌有效期 (24小时)
-const TOKEN_EXPIRY = "24h";
+const TOKEN_EXPIRY = "365d";
 
 // 验证密钥并生成令牌
 export async function POST(request: NextRequest) {

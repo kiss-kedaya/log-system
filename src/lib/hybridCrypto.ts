@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import { getPrivateKey } from "./rsaUtils";
-import { IV_LENGTH, SERVER_AES_KEY } from "./cryptoConfig";
+
+const IV_LENGTH = Number(process.env.IV_LENGTH) || 16;
+const SERVER_AES_KEY = process.env.SERVER_AES_KEY || "defaultAESKey12";
 
 /**
  * 服务器端混合解密
