@@ -236,8 +236,6 @@ export function decryptData(encryptedBytes: ArrayBufferLike): unknown {
     const serverKey = SERVER_AES_KEY.padEnd(16, "0").slice(0, 16);
     const key = CryptoJS.enc.Utf8.parse(serverKey);
 
-    console.log("解密iv:", iv.toString(CryptoJS.enc.Base64));
-    console.log("解密密钥:", key.toString(CryptoJS.enc.Base64));
     // 解密
     const decrypted = CryptoJS.AES.decrypt(
       encrypted.toString(CryptoJS.enc.Base64),
