@@ -80,7 +80,7 @@ export function encrypt(data: unknown): Buffer {
     // 组合IV和加密数据，直接返回Buffer
     const result = Buffer.concat([iv, encrypted]);
 
-        return result;
+    return result;
   } catch (error) {
     console.error("加密失败:", error);
     throw new Error("加密数据失败");

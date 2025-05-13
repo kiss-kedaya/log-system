@@ -1,50 +1,33 @@
 import crypto from "crypto";
 import { getPrivateKey } from "./rsaUtils";
-import {
-  IV_LENGTH,
-  SERVER_AES_KEY,
-  PROTOCOL_VERSION,
-  ENCRYPTED_AES_KEY_SIZE_LENGTH,
-} from "./cryptoConfig";
+import { IV_LENGTH, SERVER_AES_KEY } from "./cryptoConfig";
 
 /**
  * 服务器端混合解密
  * 处理客户端发来的RSA加密的AES密钥和AES加密的数据
  *
- * 数据格式:
- * | 协议版本(1字节) | 加密AES密钥长度(4字节) | RSA加密的AES密钥 | AES IV(16字节) | AES加密的数据 |
+ * 简化数据格式:
+ * | RSA加密的AES密钥 | AES IV(16字节) | AES加密的数据 |
  *
  * @param encryptedData 混合加密的完整数据
  * @returns 解密后的原始数据
  */
 export function hybridDecrypt(encryptedData: Buffer): unknown {
   try {
-    // 读取协议版本
-    const version = encryptedData.readUInt8(0);
-    if (version !== PROTOCOL_VERSION) {
-      throw new Error(`不支持的加密协议版本: ${version}`);
-    }
-
-    // 读取RSA加密的AES密钥长度
-    const encryptedKeySize = encryptedData.readUInt32BE(1);
-
-    // 提取RSA加密的AES密钥
-    const encryptedAesKey = encryptedData.slice(
-      1 + ENCRYPTED_AES_KEY_SIZE_LENGTH,
-      1 + ENCRYPTED_AES_KEY_SIZE_LENGTH + encryptedKeySize
-    );
-
-    // 计算IV的起始位置
-    const ivPosition = 1 + ENCRYPTED_AES_KEY_SIZE_LENGTH + encryptedKeySize;
-
-    // 提取AES IV
-    const iv = encryptedData.slice(ivPosition, ivPosition + IV_LENGTH);
-
-    // 提取AES加密的数据
-    const encryptedContent = encryptedData.slice(ivPosition + IV_LENGTH);
-
     // 获取服务器的RSA私钥
     const privateKey = getPrivateKey();
+
+    // 假设RSA加密后的AES密钥长度为固定值(通常是256字节/2048位RSA)
+    const rsaOutputSize = 256; // RSA-2048输出固定为256字节
+
+    // 提取RSA加密的AES密钥
+    const encryptedAesKey = encryptedData.slice(0, rsaOutputSize);
+
+    // 提取AES IV
+    const iv = encryptedData.slice(rsaOutputSize, rsaOutputSize + IV_LENGTH);
+
+    // 提取AES加密的数据
+    const encryptedContent = encryptedData.slice(rsaOutputSize + IV_LENGTH);
 
     try {
       // 使用RSA私钥解密AES密钥

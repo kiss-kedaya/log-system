@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto from "crypto";
 
 /**
  * 检查是否已经存在RSA密钥
@@ -18,18 +18,18 @@ export function generateRSAKeyPair() {
   if (hasExistingKeys()) {
     return;
   }
-  
+
   // 生成2048位RSA密钥对
-  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
     modulusLength: 2048,
     publicKeyEncoding: {
-      type: 'spki',
-      format: 'pem'
+      type: "spki",
+      format: "pem",
     },
     privateKeyEncoding: {
-      type: 'pkcs8',
-      format: 'pem'
-    }
+      type: "pkcs8",
+      format: "pem",
+    },
   });
 
   // 在开发环境中，将生成的密钥临时存储在内存中的环境变量
@@ -46,7 +46,7 @@ export function generateRSAKeyPair() {
 export function getPublicKey(): string {
   const publicKey = process.env.RSA_PUBLIC_KEY;
   if (!publicKey) {
-    throw new Error('公钥未设置，请在环境变量中设置RSA_PUBLIC_KEY');
+    throw new Error("公钥未设置，请在环境变量中设置RSA_PUBLIC_KEY");
   }
   return publicKey;
 }
@@ -58,7 +58,7 @@ export function getPublicKey(): string {
 export function getPrivateKey(): string {
   const privateKey = process.env.RSA_PRIVATE_KEY;
   if (!privateKey) {
-    throw new Error('私钥未设置，请在环境变量中设置RSA_PRIVATE_KEY');
+    throw new Error("私钥未设置，请在环境变量中设置RSA_PRIVATE_KEY");
   }
   return privateKey;
 }
@@ -72,7 +72,7 @@ export function encryptWithPublicKey(data: string, publicKey: string): Buffer {
     {
       key: publicKey,
       padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-      oaepHash: 'sha256'
+      oaepHash: "sha256",
     },
     buffer
   );
@@ -81,13 +81,18 @@ export function encryptWithPublicKey(data: string, publicKey: string): Buffer {
 /**
  * 使用RSA私钥解密数据
  */
-export function decryptWithPrivateKey(encryptedData: Buffer, privateKey: string): string {
-  return crypto.privateDecrypt(
-    {
-      key: privateKey,
-      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-      oaepHash: 'sha256'
-    },
-    encryptedData
-  ).toString();
-} 
+export function decryptWithPrivateKey(
+  encryptedData: Buffer,
+  privateKey: string
+): string {
+  return crypto
+    .privateDecrypt(
+      {
+        key: privateKey,
+        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: "sha256",
+      },
+      encryptedData
+    )
+    .toString();
+}
