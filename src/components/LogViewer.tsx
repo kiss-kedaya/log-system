@@ -62,15 +62,15 @@ export function LogViewer() {
   const [selectAll, setSelectAll] = useState(false);
   // 新增状态：搜索参数
   const [searchParams, setSearchParams] = useState<SearchParams>({
-    keyword: '',
-    startDate: '',
-    endDate: ''
+    keyword: "",
+    startDate: "",
+    endDate: "",
   });
   // 新增状态：输入中的搜索参数
   const [inputSearchParams, setInputSearchParams] = useState<SearchParams>({
-    keyword: '',
-    startDate: '',
-    endDate: ''
+    keyword: "",
+    startDate: "",
+    endDate: "",
   });
 
   // 用于跟踪鼠标是否在悬浮框内
@@ -81,28 +81,28 @@ export function LogViewer() {
   const fetchLogs = async () => {
     try {
       setLoading(true);
-      
+
       // 构建请求URL，添加搜索参数
       let url = "/api/logs";
       const params = new URLSearchParams();
-      
+
       if (searchParams.keyword.trim()) {
         params.append("keyword", searchParams.keyword.trim());
       }
-      
+
       if (searchParams.startDate) {
         params.append("startDate", searchParams.startDate);
       }
-      
+
       if (searchParams.endDate) {
         params.append("endDate", searchParams.endDate);
       }
-      
+
       // 添加参数到URL
       if (params.toString()) {
         url += `?${params.toString()}`;
       }
-      
+
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -147,9 +147,9 @@ export function LogViewer() {
   // 处理搜索参数变化
   const handleSearchParamChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setInputSearchParams(prev => ({
+    setInputSearchParams((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -163,11 +163,11 @@ export function LogViewer() {
   // 重置搜索表单
   const handleResetSearch = () => {
     const emptyParams = {
-      keyword: '',
-      startDate: '',
-      endDate: ''
+      keyword: "",
+      startDate: "",
+      endDate: "",
     };
-    
+
     // 重置输入和实际搜索参数
     setInputSearchParams(emptyParams);
     setSearchParams(emptyParams);
@@ -227,7 +227,7 @@ export function LogViewer() {
   // 显示批量删除确认对话框
   const handleBulkDeleteClick = () => {
     if (selectedLogs.length === 0) return;
-    
+
     setDeleteConfirm({ id: selectedLogs, isDeleting: false });
     // 清除之前的成功/错误消息
     setDeleteError(null);
@@ -249,7 +249,7 @@ export function LogViewer() {
       // 判断是单个删除还是批量删除
       if (Array.isArray(deleteConfirm.id)) {
         // 批量删除
-        const idsParam = deleteConfirm.id.join(',');
+        const idsParam = deleteConfirm.id.join(",");
         const response = await fetch(`/api/logs?ids=${idsParam}`, {
           method: "DELETE",
         });
@@ -267,7 +267,12 @@ export function LogViewer() {
         const successData = decryptData(encryptedSuccess) as ApiResponse;
 
         // 删除成功
-        setDeleteSuccess(`已成功删除 ${(successData.data as {count: number})?.count || deleteConfirm.id.length} 条日志`);
+        setDeleteSuccess(
+          `已成功删除 ${
+            (successData.data as { count: number })?.count ||
+            deleteConfirm.id.length
+          } 条日志`
+        );
 
         // 从本地状态中移除已删除的日志
         setLogs((prevLogs) => {
@@ -315,7 +320,7 @@ export function LogViewer() {
         );
 
         // 从选中列表中移除
-        setSelectedLogs(prev => prev.filter(id => id !== deleteConfirm.id));
+        setSelectedLogs((prev) => prev.filter((id) => id !== deleteConfirm.id));
 
         // 如果当前展开的是被删除的日志，则关闭展开视图
         if (expandedLog === deleteConfirm.id) {
@@ -342,9 +347,9 @@ export function LogViewer() {
   // 处理单个日志选择
   const handleSelectLog = (id: number, checked: boolean) => {
     if (checked) {
-      setSelectedLogs(prev => [...prev, id]);
+      setSelectedLogs((prev) => [...prev, id]);
     } else {
-      setSelectedLogs(prev => prev.filter(logId => logId !== id));
+      setSelectedLogs((prev) => prev.filter((logId) => logId !== id));
       setSelectAll(false);
     }
   };
@@ -354,7 +359,7 @@ export function LogViewer() {
     setSelectAll(checked);
     if (checked) {
       // 全选所有日志
-      setSelectedLogs(logs.map(log => log.id));
+      setSelectedLogs(logs.map((log) => log.id));
     } else {
       // 取消全选
       setSelectedLogs([]);
@@ -453,7 +458,10 @@ export function LogViewer() {
         <form onSubmit={handleSearch} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label htmlFor="keyword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="keyword"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 关键词
               </label>
               <input
@@ -467,7 +475,10 @@ export function LogViewer() {
               />
             </div>
             <div>
-              <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="startDate"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 开始日期
               </label>
               <input
@@ -480,7 +491,10 @@ export function LogViewer() {
               />
             </div>
             <div>
-              <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="endDate"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 结束日期
               </label>
               <input
@@ -533,18 +547,23 @@ export function LogViewer() {
         </div>
 
         {/* 当前搜索条件提示 */}
-        {(searchParams.keyword || searchParams.startDate || searchParams.endDate) && (
+        {(searchParams.keyword ||
+          searchParams.startDate ||
+          searchParams.endDate) && (
           <div className="mb-4 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded flex justify-between items-center dark:bg-blue-900 dark:border-blue-800 dark:text-blue-200">
             <div>
               当前搜索:
-              {searchParams.keyword && <span className="ml-1">关键词 "{searchParams.keyword}"</span>}
-              {searchParams.startDate && <span className="ml-1">从 {searchParams.startDate}</span>}
-              {searchParams.endDate && <span className="ml-1">到 {searchParams.endDate}</span>}
+              {searchParams.keyword && (
+                <span className="ml-1">关键词 "{searchParams.keyword}"</span>
+              )}
+              {searchParams.startDate && (
+                <span className="ml-1">从 {searchParams.startDate}</span>
+              )}
+              {searchParams.endDate && (
+                <span className="ml-1">到 {searchParams.endDate}</span>
+              )}
             </div>
-            <button 
-              onClick={handleResetSearch}
-              className="text-sm underline"
-            >
+            <button onClick={handleResetSearch} className="text-sm underline">
               清除搜索
             </button>
           </div>
@@ -628,7 +647,9 @@ export function LogViewer() {
                       <input
                         type="checkbox"
                         checked={selectedLogs.includes(log.id)}
-                        onChange={(e) => handleSelectLog(log.id, e.target.checked)}
+                        onChange={(e) =>
+                          handleSelectLog(log.id, e.target.checked)
+                        }
                         className="form-checkbox h-4 w-4 text-blue-600 transition duration-150 ease-in-out"
                       />
                     </td>
