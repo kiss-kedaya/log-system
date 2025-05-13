@@ -62,7 +62,9 @@ export async function POST(request: NextRequest) {
 
     // 将日志数据插入数据库
     const result = await sql`
-      INSERT INTO public.logs (data) VALUES (${JSON.stringify(body)}) RETURNING *
+      INSERT INTO public.logs (data) VALUES (${JSON.stringify(
+        body
+      )}) RETURNING *
     `;
 
     // 加密成功响应
