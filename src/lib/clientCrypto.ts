@@ -3,7 +3,7 @@
 import CryptoJS from "crypto-js";
 
 // AES密钥，应从环境变量或安全配置获取
-const AES_KEY = process.env.AES_KEY || 'a1b2c3d4e5f6g7h8';
+const AES_KEY = process.env.AES_KEY || "a1b2c3d4e5f6g7h8";
 
 // 初始化向量（IV）长度
 const IV_LENGTH = 16;
@@ -123,28 +123,28 @@ export function encryptData(data: unknown): ArrayBufferLike {
   try {
     // 将数据转换为JSON字符串
     const jsonStr = typeof data === "string" ? data : JSON.stringify(data);
-    
+
     // 准备密钥
     const key = CryptoJS.enc.Utf8.parse(AES_KEY);
-    
+
     // 生成随机IV (16字节)
     const iv = CryptoJS.lib.WordArray.random(IV_LENGTH);
-    
+
     // 加密
     const encrypted = CryptoJS.AES.encrypt(jsonStr, key, {
       iv: iv,
       mode: CryptoJS.mode.CBC,
       padding: CryptoJS.pad.Pkcs7,
     });
-    
+
     // 获取加密后的内容
     const encryptedData = encrypted.ciphertext;
-    
+
     // 组合IV和加密内容
     const combined = CryptoJS.lib.WordArray.create()
       .concat(iv)
       .concat(encryptedData);
-    
+
     // 转换为Uint8Array并返回ArrayBuffer
     return wordArrayToUint8Array(combined).buffer;
   } catch (error) {
@@ -160,7 +160,7 @@ export function encryptToBase64(data: unknown): string {
   try {
     // 准备密钥
     const key = CryptoJS.enc.Utf8.parse(AES_KEY);
-    
+
     // 生成随机IV (16字节)
     const iv = CryptoJS.lib.WordArray.random(IV_LENGTH);
 
@@ -189,4 +189,3 @@ export function encryptToBase64(data: unknown): string {
     throw new Error("加密数据失败");
   }
 }
- 
