@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { getPrivateKey } from "./rsaUtilsBase64";
+import { getPrivateKey } from "./rsaUtils";
 import {
   IV_LENGTH,
   SERVER_AES_KEY,
@@ -54,7 +54,7 @@ export function hybridDecrypt(encryptedData: Buffer): unknown {
 
     // 获取服务器的RSA私钥
     const privateKey = getPrivateKey();
-    console.log("从环境变量获取到私钥", privateKey);
+    console.log("从环境变量获取到私钥");
 
     try {
       // 使用RSA私钥解密AES密钥

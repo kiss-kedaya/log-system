@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generateRSAKeyPair, getPublicKey, hasExistingKeys } from "@/lib/rsaUtilsBase64";
+import { generateRSAKeyPair, getPublicKey, hasExistingKeys } from "@/lib/rsaUtils";
 
 /**
  * 初始化RSA密钥对，并返回公钥
