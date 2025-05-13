@@ -33,13 +33,6 @@ type ApiResponse = {
   message?: string;
 };
 
-// 搜索参数类型
-type SearchParams = {
-  keyword: string;
-  startDate: string;
-  endDate: string;
-};
-
 export function LogViewer() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,18 +53,6 @@ export function LogViewer() {
   const [selectedLogs, setSelectedLogs] = useState<number[]>([]);
   // 新增状态：是否全选
   const [selectAll, setSelectAll] = useState(false);
-  // 新增状态：搜索参数
-  const [searchParams, setSearchParams] = useState<SearchParams>({
-    keyword: '',
-    startDate: '',
-    endDate: ''
-  });
-  // 新增状态：输入中的搜索参数
-  const [inputSearchParams, setInputSearchParams] = useState<SearchParams>({
-    keyword: '',
-    startDate: '',
-    endDate: ''
-  });
 
   // 用于跟踪鼠标是否在悬浮框内
   const hoverCardRef = useRef<HTMLDivElement>(null);
@@ -81,29 +62,7 @@ export function LogViewer() {
   const fetchLogs = async () => {
     try {
       setLoading(true);
-      
-      // 构建请求URL，添加搜索参数
-      let url = "/api/logs";
-      const params = new URLSearchParams();
-      
-      if (searchParams.keyword.trim()) {
-        params.append("keyword", searchParams.keyword.trim());
-      }
-      
-      if (searchParams.startDate) {
-        params.append("startDate", searchParams.startDate);
-      }
-      
-      if (searchParams.endDate) {
-        params.append("endDate", searchParams.endDate);
-      }
-      
-      // 添加参数到URL
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
-      
-      const response = await fetch(url);
+      const response = await fetch("/api/logs");
 
       if (!response.ok) {
         throw new Error("获取日志失败");
@@ -143,40 +102,6 @@ export function LogViewer() {
       setLoading(false);
     }
   };
-
-  // 处理搜索参数变化
-  const handleSearchParamChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setInputSearchParams(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  // 处理搜索表单提交
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    // 更新搜索参数状态并触发新的搜索
-    setSearchParams(inputSearchParams);
-  };
-
-  // 重置搜索表单
-  const handleResetSearch = () => {
-    const emptyParams = {
-      keyword: '',
-      startDate: '',
-      endDate: ''
-    };
-    
-    // 重置输入和实际搜索参数
-    setInputSearchParams(emptyParams);
-    setSearchParams(emptyParams);
-  };
-
-  // 监听搜索参数变化，重新获取日志
-  useEffect(() => {
-    fetchLogs();
-  }, [searchParams]);
 
   // 添加新日志后刷新列表
   const handleLogAdded = () => {
@@ -447,70 +372,6 @@ export function LogViewer() {
         <LogForm onLogAdded={handleLogAdded} />
       </div>
 
-      {/* 搜索区域 */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">搜索日志</h2>
-        <form onSubmit={handleSearch} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label htmlFor="keyword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                关键词
-              </label>
-              <input
-                type="text"
-                id="keyword"
-                name="keyword"
-                value={inputSearchParams.keyword}
-                onChange={handleSearchParamChange}
-                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                placeholder="搜索日志内容"
-              />
-            </div>
-            <div>
-              <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                开始日期
-              </label>
-              <input
-                type="date"
-                id="startDate"
-                name="startDate"
-                value={inputSearchParams.startDate}
-                onChange={handleSearchParamChange}
-                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              />
-            </div>
-            <div>
-              <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                结束日期
-              </label>
-              <input
-                type="date"
-                id="endDate"
-                name="endDate"
-                value={inputSearchParams.endDate}
-                onChange={handleSearchParamChange}
-                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={handleResetSearch}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
-            >
-              重置
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
-            >
-              搜索
-            </button>
-          </div>
-        </form>
-      </div>
-
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">日志列表</h2>
@@ -531,24 +392,6 @@ export function LogViewer() {
             </button>
           </div>
         </div>
-
-        {/* 当前搜索条件提示 */}
-        {(searchParams.keyword || searchParams.startDate || searchParams.endDate) && (
-          <div className="mb-4 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded flex justify-between items-center dark:bg-blue-900 dark:border-blue-800 dark:text-blue-200">
-            <div>
-              当前搜索:
-              {searchParams.keyword && <span className="ml-1">关键词 "{searchParams.keyword}"</span>}
-              {searchParams.startDate && <span className="ml-1">从 {searchParams.startDate}</span>}
-              {searchParams.endDate && <span className="ml-1">到 {searchParams.endDate}</span>}
-            </div>
-            <button 
-              onClick={handleResetSearch}
-              className="text-sm underline"
-            >
-              清除搜索
-            </button>
-          </div>
-        )}
 
         {/* 删除成功消息 */}
         {deleteSuccess && (
@@ -654,105 +497,133 @@ export function LogViewer() {
                             }
                             onMouseLeave={handleMouseLeave}
                           >
-                            {Object.keys(log.data[key] as object).length > 0
-                              ? "查看对象"
-                              : "空对象"}
+                            [Object]
                           </span>
                         ) : (
-                          String(log.data[key] ?? "")
+                          String(log.data[key] ?? "-")
                         )}
                       </td>
                     ))}
 
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => toggleExpand(log.id)}
-                        className="text-blue-600 hover:text-blue-900 mr-3"
-                      >
-                        {expandedLog === log.id ? "收起" : "展开"}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClick(log.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        删除
-                      </button>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => toggleExpand(log.id)}
+                          className="text-blue-500 hover:text-blue-700"
+                        >
+                          {expandedLog === log.id ? "折叠" : "展开"}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(log.id)}
+                          className="text-red-500 hover:text-red-700 ml-3"
+                        >
+                          删除
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
 
-        {/* 展开的日志详情 */}
-        {expandedLog !== null && (
-          <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <h3 className="text-lg font-medium mb-2">
-              日志详情 (ID: {expandedLog})
-            </h3>
-            <pre className="bg-white dark:bg-gray-800 p-4 rounded overflow-x-auto text-sm">
-              {JSON.stringify(
-                logs.find((log) => log.id === expandedLog)?.data || {},
-                null,
-                2
-              )}
-            </pre>
+            {/* 展开的日志详情 */}
+            {expandedLog !== null && (
+              <div className="mt-2 p-4 border bg-gray-50 dark:bg-gray-700 rounded">
+                <h3 className="text-sm font-medium mb-2">
+                  日志详情 (ID: {expandedLog})
+                </h3>
+                <pre className="whitespace-pre-wrap text-sm overflow-x-auto">
+                  {JSON.stringify(
+                    logs.find((log) => log.id === expandedLog)?.data,
+                    null,
+                    2
+                  )}
+                </pre>
+              </div>
+            )}
+
+            {/* 悬浮显示对象信息 */}
+            {hoverInfo && (
+              <div
+                ref={hoverCardRef}
+                className="fixed bg-white dark:bg-gray-800 shadow-lg rounded-md p-4 border border-gray-200 dark:border-gray-700 z-50 max-w-md"
+                style={{
+                  top: `${hoverInfo.y + 10}px`,
+                  left: `${hoverInfo.x + 10}px`,
+                }}
+                onMouseEnter={handleHoverCardMouseEnter}
+                onMouseLeave={handleHoverCardMouseLeave}
+              >
+                <pre className="whitespace-pre-wrap text-sm overflow-x-auto max-h-60">
+                  {JSON.stringify(hoverInfo.content, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            {/* 删除确认对话框 */}
+            {deleteConfirm && (
+              <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4">
+                  <h3 className="text-lg font-semibold mb-4">确认删除</h3>
+                  <p className="mb-6">
+                    {Array.isArray(deleteConfirm.id) ? (
+                      <>
+                        您确定要删除选中的 <span className="font-semibold">{deleteConfirm.id.length}</span> 条日志吗？此操作无法撤销。
+                      </>
+                    ) : (
+                      <>
+                        您确定要删除ID为 <span className="font-semibold">{deleteConfirm.id}</span> 的日志吗？此操作无法撤销。
+                      </>
+                    )}
+                  </p>
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      onClick={handleCancelDelete}
+                      disabled={deleteConfirm.isDeleting}
+                      className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-100 transition"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleConfirmDelete}
+                      disabled={deleteConfirm.isDeleting}
+                      className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition flex items-center"
+                    >
+                      {deleteConfirm.isDeleting ? (
+                        <>
+                          <svg
+                            className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                          </svg>
+                          处理中...
+                        </>
+                      ) : (
+                        "确认删除"
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
-
-      {/* 删除确认对话框 */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-medium mb-4">确认删除</h3>
-            <p className="mb-6">
-              {Array.isArray(deleteConfirm.id)
-                ? `确定要删除选中的 ${deleteConfirm.id.length} 条日志吗？`
-                : `确定要删除 ID 为 ${deleteConfirm.id} 的日志吗？`}
-            </p>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={handleCancelDelete}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
-                disabled={deleteConfirm.isDeleting}
-              >
-                取消
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition"
-                disabled={deleteConfirm.isDeleting}
-              >
-                {deleteConfirm.isDeleting ? "删除中..." : "确认删除"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 悬浮对象信息卡片 */}
-      {hoverInfo && (
-        <div
-          ref={hoverCardRef}
-          onMouseEnter={handleHoverCardMouseEnter}
-          onMouseLeave={handleHoverCardMouseLeave}
-          style={{
-            position: "fixed",
-            left: `${hoverInfo.x}px`,
-            top: `${hoverInfo.y + 20}px`,
-            maxWidth: "400px",
-            maxHeight: "300px",
-            zIndex: 1000,
-          }}
-          className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-3 overflow-auto border border-gray-200 dark:border-gray-700"
-        >
-          <pre className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
-            {JSON.stringify(hoverInfo.content, null, 2)}
-          </pre>
-        </div>
-      )}
     </div>
   );
 }
