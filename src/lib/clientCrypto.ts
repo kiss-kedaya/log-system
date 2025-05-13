@@ -3,7 +3,7 @@
 import CryptoJS from "crypto-js";
 
 // AES密钥，应从环境变量或安全配置获取
-const AES_KEY = process.env.NEXT_PUBLIC_AES_KEY || 'a1b2c3d4e5f6g7h8';
+const AES_KEY = process.env.AES_KEY || 'a1b2c3d4e5f6g7h8';
 
 // 初始化向量（IV）长度
 const IV_LENGTH = 16;
@@ -189,3 +189,4 @@ export function encryptToBase64(data: unknown): string {
     throw new Error("加密数据失败");
   }
 }
+ 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { encryptData, decryptData } from "@/lib/clientCrypto";
+import { encryptData, decryptData } from "@/lib/clientHybridCrypto";
 
 interface LogFormProps {
   onLogAdded: () => void;
@@ -33,9 +33,9 @@ export function LogForm({ onLogAdded }: LogFormProps) {
       setSuccess(false);
 
       // 在客户端直接加密数据 - 返回ArrayBuffer
-      const encryptedData = encryptData(parsedData);
+      const encryptedData = await encryptData(parsedData);
 
-      // 将ArrayBufferLike转换为Blob类型，Blob是Fetch API支持的BodyInit类型
+      // 将ArrayBuffer转换为Blob类型，Blob是Fetch API支持的BodyInit类型
       const blob = new Blob([new Uint8Array(encryptedData)], {
         type: "application/octet-stream",
       });

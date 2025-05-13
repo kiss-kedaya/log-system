@@ -1,9 +1,13 @@
 import { NextRequest } from "next/server";
 import { initDatabase, sql } from "@/lib/db";
-import { encrypt, decrypt } from "@/lib/crypto";
+import { hybridDecrypt, hybridEncrypt } from "@/lib/hybridCrypto";
+import { generateRSAKeyPair } from "@/lib/rsaUtils";
 
 // 初始化数据库
 initDatabase().catch(console.error);
+
+// 确保RSA密钥已生成
+generateRSAKeyPair();
 
 // GET 请求处理程序 - 获取所有日志
 export async function GET() {
@@ -14,7 +18,7 @@ export async function GET() {
     `;
 
     // 加密日志数据
-    const encryptedData = encrypt({ success: true, data: logs });
+    const encryptedData = hybridEncrypt({ success: true, data: logs });
     
     // 返回二进制数据
     return new Response(encryptedData, { 
@@ -27,7 +31,7 @@ export async function GET() {
     console.error("获取日志失败:", error);
     
     // 加密错误消息
-    const encryptedError = encrypt({ 
+    const encryptedError = hybridEncrypt({ 
       success: false, 
       error: "获取日志失败" 
     });
@@ -46,9 +50,11 @@ export async function POST(request: NextRequest) {
     // 获取请求体的二进制数据
     const arrayBuffer = await request.arrayBuffer();
     
-    // 将二进制数据转换为Buffer直接解密
+    // 将二进制数据转换为Buffer
     const buffer = Buffer.from(arrayBuffer);
-    const body = decrypt(buffer);
+    
+    // 使用混合解密处理
+    const body = hybridDecrypt(buffer);
     
     if (!body || typeof body !== 'object') {
       throw new Error("无效的请求数据");
@@ -60,7 +66,7 @@ export async function POST(request: NextRequest) {
     `;
 
     // 加密成功响应
-    const encryptedResponse = encrypt({
+    const encryptedResponse = hybridEncrypt({
       success: true,
       message: "日志保存成功",
       data: result[0],
@@ -75,7 +81,7 @@ export async function POST(request: NextRequest) {
     console.error("保存日志失败:", error);
     
     // 加密错误消息
-    const encryptedError = encrypt({ 
+    const encryptedError = hybridEncrypt({ 
       success: false, 
       error: "保存日志失败" 
     });
@@ -102,7 +108,7 @@ export async function DELETE(request: NextRequest) {
       const idArray = ids.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
       
       if (idArray.length === 0) {
-        const encryptedError = encrypt({ 
+        const encryptedError = hybridEncrypt({ 
           success: false, 
           error: "无效的日志ID参数" 
         });
@@ -119,7 +125,7 @@ export async function DELETE(request: NextRequest) {
       `;
 
       // 加密成功响应
-      const encryptedResponse = encrypt({ 
+      const encryptedResponse = hybridEncrypt({ 
         success: true, 
         message: "日志批量删除成功",
         data: { count: result.length, ids: result.map(row => row.id) }
@@ -138,7 +144,7 @@ export async function DELETE(request: NextRequest) {
 
       // 检查是否找到并删除了日志
       if (result.length === 0) {
-        const encryptedError = encrypt({ 
+        const encryptedError = hybridEncrypt({ 
           success: false, 
           error: "未找到指定ID的日志" 
         });
@@ -150,7 +156,7 @@ export async function DELETE(request: NextRequest) {
       }
 
       // 加密成功响应
-      const encryptedResponse = encrypt({ 
+      const encryptedResponse = hybridEncrypt({ 
         success: true, 
         message: "日志删除成功",
         data: { id: result[0].id } 
@@ -161,7 +167,7 @@ export async function DELETE(request: NextRequest) {
         headers: { "Content-Type": "application/octet-stream" } 
       });
     } else {
-      const encryptedError = encrypt({ 
+      const encryptedError = hybridEncrypt({ 
         success: false, 
         error: "缺少日志ID参数" 
       });
@@ -175,7 +181,7 @@ export async function DELETE(request: NextRequest) {
     console.error("删除日志失败:", error);
     
     // 加密错误消息
-    const encryptedError = encrypt({ 
+    const encryptedError = hybridEncrypt({ 
       success: false, 
       error: "删除日志失败" 
     });

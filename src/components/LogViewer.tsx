@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { LogForm } from "@/components/LogForm";
-import { decryptData } from "@/lib/clientCrypto";
+import { decryptData } from "@/lib/clientHybridCrypto";
 
 type Log = {
   id: number;

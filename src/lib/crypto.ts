@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
-if (!process.env.NEXT_PUBLIC_AES_KEY) {
-  throw new Error("AES密钥未设置，请在环境变量中设置NEXT_PUBLIC_AES_KEY");
+if (!process.env.AES_KEY) {
+  throw new Error("AES密钥未设置，请在环境变量中设置AES_KEY");
 }
 
 // 固定的初始化向量（IV）长度
@@ -68,7 +68,7 @@ export function encrypt(data: unknown): Buffer {
     const iv = processIV(process.env.NEXT_PUBLIC_AES_IV);
 
     // 处理密钥，获取合适的算法
-    const { key, algorithm } = processKey(process.env.NEXT_PUBLIC_AES_KEY as string);
+    const { key, algorithm } = processKey(process.env.AES_KEY as string);
 
     // 创建密码器
     const cipher = crypto.createCipheriv(algorithm, key, iv);
@@ -102,7 +102,7 @@ export function decrypt(encryptedData: Buffer): unknown {
     const encrypted = encryptedData.slice(IV_LENGTH);
 
     // 处理密钥，获取合适的算法
-    const { key, algorithm } = processKey(process.env.NEXT_PUBLIC_AES_KEY as string);
+    const { key, algorithm } = processKey(process.env.AES_KEY as string);
 
     // 创建解密器
     const decipher = crypto.createDecipheriv(algorithm, key, iv);
