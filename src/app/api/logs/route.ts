@@ -58,7 +58,6 @@ function createErrorResponse(
   } catch (encryptError: unknown) {
     // 如果加密失败，则返回纯文本错误信息（应急方案）
     console.error("加密错误信息失败:", encryptError);
-    const err = encryptError as Error;
     return new Response(JSON.stringify(errorPayload), {
       status: status,
       headers: { "Content-Type": "application/json" },
@@ -175,20 +174,20 @@ export async function GET(request: NextRequest) {
       });
     } catch (encryptError: unknown) {
       console.error("加密日志数据失败:", encryptError);
-      const err = encryptError as Error;
+      const errorObj = encryptError as Error;
       return createErrorResponse(500, "加密日志数据失败", {
-        name: err.name,
-        message: err.message,
-        stack: err.stack,
+        name: errorObj.name,
+        message: errorObj.message,
+        stack: errorObj.stack,
       });
     }
   } catch (error: unknown) {
     console.error("获取日志失败:", error);
-    const err = error as Error;
+    const errorObj = error as Error;
     return createErrorResponse(500, "获取日志失败", {
-      name: err.name,
-      message: err.message,
-      stack: err.stack,
+      name: errorObj.name,
+      message: errorObj.message,
+      stack: errorObj.stack,
     });
   }
 }
@@ -266,20 +265,20 @@ export async function POST(request: NextRequest) {
       });
     } catch (dbError: unknown) {
       console.error("数据库操作失败:", dbError);
-      const err = dbError as Error;
+      const errorObj = dbError as Error;
       return createErrorResponse(500, "保存日志到数据库失败", {
-        name: err.name,
-        message: err.message,
-        stack: err.stack,
+        name: errorObj.name,
+        message: errorObj.message,
+        stack: errorObj.stack,
       });
     }
   } catch (error: unknown) {
     console.error("保存日志失败:", error);
-    const err = error as Error;
+    const errorObj = error as Error;
     return createErrorResponse(500, "保存日志失败", {
-      name: err.name,
-      message: err.message,
-      stack: err.stack,
+      name: errorObj.name,
+      message: errorObj.message,
+      stack: errorObj.stack,
     });
   }
 }
@@ -325,11 +324,11 @@ export async function DELETE(request: NextRequest) {
         });
       } catch (dbError: unknown) {
         console.error("批量删除数据库操作失败:", dbError);
-        const err = dbError as Error;
+        const errorObj = dbError as Error;
         return createErrorResponse(500, "批量删除日志失败", {
-          name: err.name,
-          message: err.message,
-          stack: err.stack,
+          name: errorObj.name,
+          message: errorObj.message,
+          stack: errorObj.stack,
         });
       }
     } else if (id) {
@@ -360,11 +359,11 @@ export async function DELETE(request: NextRequest) {
         });
       } catch (dbError: unknown) {
         console.error("删除日志数据库操作失败:", dbError);
-        const err = dbError as Error;
+        const errorObj = dbError as Error;
         return createErrorResponse(500, "删除日志失败", {
-          name: err.name,
-          message: err.message,
-          stack: err.stack,
+          name: errorObj.name,
+          message: errorObj.message,
+          stack: errorObj.stack,
         });
       }
     } else {
@@ -372,11 +371,11 @@ export async function DELETE(request: NextRequest) {
     }
   } catch (error: unknown) {
     console.error("删除日志失败:", error);
-    const err = error as Error;
+    const errorObj = error as Error;
     return createErrorResponse(500, "删除日志失败", {
-      name: err.name,
-      message: err.message,
-      stack: err.stack,
+      name: errorObj.name,
+      message: errorObj.message,
+      stack: errorObj.stack,
     });
   }
 }
