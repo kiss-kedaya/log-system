@@ -1,46 +1,185 @@
 import { NextRequest } from "next/server";
 import { initDatabase, sql } from "@/lib/db";
-import { hybridDecrypt, hybridEncrypt } from "@/lib/hybridCrypto";
+import { hybridDecrypt, hybridEncrypt, DecryptionError } from "@/lib/hybridCrypto";
 import { generateRSAKeyPair } from "@/lib/rsaUtils";
 
 // 初始化数据库
-initDatabase().catch(console.error);
+initDatabase().catch((err) => {
+  console.error("数据库初始化失败:", err);
+});
 
 // 确保RSA密钥已生成
-generateRSAKeyPair();
+try {
+  generateRSAKeyPair();
+} catch (error) {
+  console.error("RSA密钥生成失败:", error);
+}
 
-// GET 请求处理程序 - 获取所有日志
-export async function GET() {
+// 定义错误详情接口
+interface ErrorDetails {
+  name?: string;
+  message?: string;
+  stack?: string;
+  stage?: string;
+  originalError?: any;
+  [key: string]: any;
+}
+
+// 创建更详细的错误响应
+function createErrorResponse(status: number, errorMessage: string, errorDetails?: ErrorDetails) {
+  const errorPayload = {
+    success: false, 
+    error: errorMessage,
+    errorDetails: errorDetails ? JSON.stringify(errorDetails) : undefined
+  };
+  
   try {
-    // 执行查询获取所有日志，按创建时间降序排列
-    const logs = await sql`
-      SELECT * FROM logs ORDER BY created_at DESC
-    `;
-
-    // 加密日志数据
-    const encryptedData = hybridEncrypt({ success: true, data: logs });
-    
-    // 返回二进制数据
-    return new Response(encryptedData, { 
-      status: 200, 
-      headers: { 
-        "Content-Type": "application/octet-stream"
-      } 
-    });
-  } catch (error) {
-    console.error("获取日志失败:", error);
-    
-    // 加密错误消息
-    const encryptedError = hybridEncrypt({ 
-      success: false, 
-      error: "获取日志失败" 
-    });
-    
-    // 返回二进制数据
+    // 尝试加密错误信息
+    const encryptedError = hybridEncrypt(errorPayload);
     return new Response(encryptedError, { 
-      status: 500, 
+      status: status, 
       headers: { "Content-Type": "application/octet-stream" } 
     });
+  } catch (encryptError: any) {
+    // 如果加密失败，则返回纯文本错误信息（应急方案）
+    console.error("加密错误信息失败:", encryptError);
+    return new Response(JSON.stringify(errorPayload), { 
+      status: status, 
+      headers: { "Content-Type": "application/json" } 
+    });
+  }
+}
+
+// GET 请求处理程序 - 获取日志
+export async function GET(request: NextRequest) {
+  try {
+    // 从URL中获取搜索参数
+    const url = new URL(request.url);
+    const keyword = url.searchParams.get("keyword");
+    const startDate = url.searchParams.get("startDate");
+    const endDate = url.searchParams.get("endDate");
+
+    let logs;
+
+    // 根据搜索条件构建查询
+    if (
+      (keyword && keyword.trim() !== "") ||
+      (startDate && startDate.trim() !== "") ||
+      (endDate && endDate.trim() !== "")
+    ) {
+      // 构建不同的查询组合
+      if (keyword && startDate && endDate) {
+        // 关键词 + 开始日期 + 结束日期
+        const endDateObj = new Date(endDate);
+        endDateObj.setDate(endDateObj.getDate() + 1);
+        const endDateWithTime = endDateObj.toISOString().split("T")[0];
+
+        logs = await sql`
+          SELECT * FROM logs 
+          WHERE data::text ILIKE ${"%" + keyword + "%"} 
+          AND created_at >= ${startDate} 
+          AND created_at < ${endDateWithTime}
+          ORDER BY created_at DESC
+        `;
+      } else if (keyword && startDate) {
+        // 关键词 + 开始日期
+        logs = await sql`
+          SELECT * FROM logs 
+          WHERE data::text ILIKE ${"%" + keyword + "%"} 
+          AND created_at >= ${startDate}
+          ORDER BY created_at DESC
+        `;
+      } else if (keyword && endDate) {
+        // 关键词 + 结束日期
+        const endDateObj = new Date(endDate);
+        endDateObj.setDate(endDateObj.getDate() + 1);
+        const endDateWithTime = endDateObj.toISOString().split("T")[0];
+
+        logs = await sql`
+          SELECT * FROM logs 
+          WHERE data::text ILIKE ${"%" + keyword + "%"} 
+          AND created_at < ${endDateWithTime}
+          ORDER BY created_at DESC
+        `;
+      } else if (startDate && endDate) {
+        // 开始日期 + 结束日期
+        const endDateObj = new Date(endDate);
+        endDateObj.setDate(endDateObj.getDate() + 1);
+        const endDateWithTime = endDateObj.toISOString().split("T")[0];
+
+        logs = await sql`
+          SELECT * FROM logs 
+          WHERE created_at >= ${startDate} 
+          AND created_at < ${endDateWithTime}
+          ORDER BY created_at DESC
+        `;
+      } else if (keyword) {
+        // 只有关键词
+        logs = await sql`
+          SELECT * FROM logs 
+          WHERE data::text ILIKE ${"%" + keyword + "%"}
+          ORDER BY created_at DESC
+        `;
+      } else if (startDate) {
+        // 只有开始日期
+        logs = await sql`
+          SELECT * FROM logs 
+          WHERE created_at >= ${startDate}
+          ORDER BY created_at DESC
+        `;
+      } else if (endDate) {
+        // 只有结束日期
+        const endDateObj = new Date(endDate);
+        endDateObj.setDate(endDateObj.getDate() + 1);
+        const endDateWithTime = endDateObj.toISOString().split("T")[0];
+
+        logs = await sql`
+          SELECT * FROM logs 
+          WHERE created_at < ${endDateWithTime}
+          ORDER BY created_at DESC
+        `;
+      }
+    } else {
+      // 没有搜索条件，获取所有日志
+      logs = await sql`
+        SELECT * FROM logs ORDER BY created_at DESC
+      `;
+    }
+
+    try {
+      // 加密日志数据
+      const encryptedData = hybridEncrypt({ success: true, data: logs });
+      
+      // 返回二进制数据
+      return new Response(encryptedData, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/octet-stream",
+        },
+      });
+    } catch (encryptError: any) {
+      console.error("加密日志数据失败:", encryptError);
+      return createErrorResponse(
+        500, 
+        "加密日志数据失败", 
+        { 
+          name: encryptError.name, 
+          message: encryptError.message, 
+          stack: encryptError.stack 
+        }
+      );
+    }
+  } catch (error: any) {
+    console.error("获取日志失败:", error);
+    return createErrorResponse(
+      500, 
+      "获取日志失败", 
+      { 
+        name: error.name, 
+        message: error.message, 
+        stack: error.stack 
+      }
+    );
   }
 }
 
@@ -49,48 +188,94 @@ export async function POST(request: NextRequest) {
   try {
     // 获取请求体的二进制数据
     const arrayBuffer = await request.arrayBuffer();
-    
+
     // 将二进制数据转换为Buffer
     const buffer = Buffer.from(arrayBuffer);
     
-    // 使用混合解密处理
-    const body = hybridDecrypt(buffer);
-    
-    if (!body || typeof body !== 'object') {
-      throw new Error("无效的请求数据");
+    let body;
+    try {
+      // 使用混合解密处理
+      body = hybridDecrypt(buffer);
+    } catch (decryptError: any) {
+      console.error("混合解密失败:", decryptError);
+      
+      // 检查是否是详细的解密错误
+      if (decryptError instanceof DecryptionError) {
+        return createErrorResponse(
+          400, 
+          `解密请求数据失败: ${decryptError.message}`, 
+          { 
+            name: decryptError.name,
+            message: decryptError.message,
+            stage: decryptError.stage,
+            originalError: {
+              name: decryptError.originalError?.name,
+              message: decryptError.originalError?.message,
+              code: decryptError.originalError?.code,
+              library: decryptError.originalError?.library,
+              reason: decryptError.originalError?.reason
+            }
+          }
+        );
+      }
+      
+      // 一般性解密错误
+      return createErrorResponse(
+        400, 
+        "解密请求数据失败", 
+        { 
+          name: decryptError.name, 
+          message: decryptError.message, 
+          stack: decryptError.stack 
+        }
+      );
     }
 
-    // 将日志数据插入数据库
-    const result = await sql`
-      INSERT INTO logs (data) VALUES (${JSON.stringify(body)}) RETURNING *
-    `;
+    if (!body || typeof body !== "object") {
+      return createErrorResponse(400, "无效的请求数据", { receivedType: typeof body });
+    }
 
-    // 加密成功响应
-    const encryptedResponse = hybridEncrypt({
-      success: true,
-      message: "日志保存成功",
-      data: result[0],
-    });
+    try {
+      // 将日志数据插入数据库
+      const result = await sql`
+        INSERT INTO logs (data) VALUES (${JSON.stringify(body)}) RETURNING *
+      `;
 
-    // 返回二进制数据
-    return new Response(encryptedResponse, { 
-      status: 201, 
-      headers: { "Content-Type": "application/octet-stream" } 
-    });
-  } catch (error) {
+      // 加密成功响应
+      const encryptedResponse = hybridEncrypt({
+        success: true,
+        message: "日志保存成功",
+        data: result[0],
+      });
+
+      // 返回二进制数据
+      return new Response(encryptedResponse, {
+        status: 201,
+        headers: { "Content-Type": "application/octet-stream" },
+      });
+    } catch (dbError: any) {
+      console.error("数据库操作失败:", dbError);
+      return createErrorResponse(
+        500, 
+        "保存日志到数据库失败", 
+        { 
+          name: dbError.name, 
+          message: dbError.message, 
+          stack: dbError.stack 
+        }
+      );
+    }
+  } catch (error: any) {
     console.error("保存日志失败:", error);
-    
-    // 加密错误消息
-    const encryptedError = hybridEncrypt({ 
-      success: false, 
-      error: "保存日志失败" 
-    });
-    
-    // 返回二进制数据
-    return new Response(encryptedError, { 
-      status: 500, 
-      headers: { "Content-Type": "application/octet-stream" } 
-    });
+    return createErrorResponse(
+      500, 
+      "保存日志失败", 
+      { 
+        name: error.name, 
+        message: error.message, 
+        stack: error.stack 
+      }
+    );
   }
 }
 
@@ -105,90 +290,93 @@ export async function DELETE(request: NextRequest) {
     // 判断是单个删除还是批量删除
     if (ids) {
       // 批量删除
-      const idArray = ids.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-      
+      const idArray = ids
+        .split(",")
+        .map((id) => parseInt(id, 10))
+        .filter((id) => !isNaN(id));
+
       if (idArray.length === 0) {
-        const encryptedError = hybridEncrypt({ 
-          success: false, 
-          error: "无效的日志ID参数" 
-        });
-        
-        return new Response(encryptedError, { 
-          status: 400, 
-          headers: { "Content-Type": "application/octet-stream" } 
-        });
+        return createErrorResponse(400, "无效的日志ID参数", { receivedIds: ids });
       }
 
-      // 执行批量删除操作
-      const result = await sql`
-        DELETE FROM logs WHERE id = ANY(${idArray}) RETURNING id
-      `;
+      try {
+        // 执行批量删除操作
+        const result = await sql`
+          DELETE FROM logs WHERE id = ANY(${idArray}) RETURNING id
+        `;
 
-      // 加密成功响应
-      const encryptedResponse = hybridEncrypt({ 
-        success: true, 
-        message: "日志批量删除成功",
-        data: { count: result.length, ids: result.map(row => row.id) }
-      });
-      
-      return new Response(encryptedResponse, { 
-        status: 200, 
-        headers: { "Content-Type": "application/octet-stream" } 
-      });
+        // 加密成功响应
+        const encryptedResponse = hybridEncrypt({
+          success: true,
+          message: "日志批量删除成功",
+          data: { count: result.length, ids: result.map((row) => row.id) },
+        });
+
+        return new Response(encryptedResponse, {
+          status: 200,
+          headers: { "Content-Type": "application/octet-stream" },
+        });
+      } catch (dbError: any) {
+        console.error("批量删除数据库操作失败:", dbError);
+        return createErrorResponse(
+          500, 
+          "批量删除日志失败", 
+          { 
+            name: dbError.name, 
+            message: dbError.message, 
+            stack: dbError.stack 
+          }
+        );
+      }
     } else if (id) {
-      // 单个删除
-      // 执行删除操作
-      const result = await sql`
-        DELETE FROM logs WHERE id = ${id} RETURNING id
-      `;
+      try {
+        // 单个删除
+        // 执行删除操作
+        const result = await sql`
+          DELETE FROM logs WHERE id = ${id} RETURNING id
+        `;
 
-      // 检查是否找到并删除了日志
-      if (result.length === 0) {
-        const encryptedError = hybridEncrypt({ 
-          success: false, 
-          error: "未找到指定ID的日志" 
+        // 检查是否找到并删除了日志
+        if (result.length === 0) {
+          return createErrorResponse(404, "未找到指定ID的日志", { requestedId: id });
+        }
+
+        // 加密成功响应
+        const encryptedResponse = hybridEncrypt({
+          success: true,
+          message: "日志删除成功",
+          data: { id: result[0].id },
         });
-        
-        return new Response(encryptedError, { 
-          status: 404, 
-          headers: { "Content-Type": "application/octet-stream" } 
+
+        return new Response(encryptedResponse, {
+          status: 200,
+          headers: { "Content-Type": "application/octet-stream" },
         });
+      } catch (dbError: any) {
+        console.error("删除日志数据库操作失败:", dbError);
+        return createErrorResponse(
+          500, 
+          "删除日志失败", 
+          { 
+            name: dbError.name, 
+            message: dbError.message, 
+            stack: dbError.stack 
+          }
+        );
       }
-
-      // 加密成功响应
-      const encryptedResponse = hybridEncrypt({ 
-        success: true, 
-        message: "日志删除成功",
-        data: { id: result[0].id } 
-      });
-      
-      return new Response(encryptedResponse, { 
-        status: 200, 
-        headers: { "Content-Type": "application/octet-stream" } 
-      });
     } else {
-      const encryptedError = hybridEncrypt({ 
-        success: false, 
-        error: "缺少日志ID参数" 
-      });
-      
-      return new Response(encryptedError, { 
-        status: 400, 
-        headers: { "Content-Type": "application/octet-stream" } 
-      });
+      return createErrorResponse(400, "缺少日志ID参数", { url: request.url });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("删除日志失败:", error);
-    
-    // 加密错误消息
-    const encryptedError = hybridEncrypt({ 
-      success: false, 
-      error: "删除日志失败" 
-    });
-    
-    return new Response(encryptedError, { 
-      status: 500, 
-      headers: { "Content-Type": "application/octet-stream" } 
-    });
+    return createErrorResponse(
+      500, 
+      "删除日志失败", 
+      { 
+        name: error.name, 
+        message: error.message, 
+        stack: error.stack 
+      }
+    );
   }
 }
