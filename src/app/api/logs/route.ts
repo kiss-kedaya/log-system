@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { initDatabase, sql } from "@/lib/db";
 import { hybridDecrypt, hybridEncrypt } from "@/lib/hybridCrypto";
-import { generateRSAKeyPair } from "@/lib/rsaUtils";
+import { generateRSAKeyPair } from "@/lib/rsaUtilsBase64";
 
 // 初始化数据库
 initDatabase().catch(console.error);

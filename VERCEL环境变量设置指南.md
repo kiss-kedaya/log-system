@@ -99,7 +99,51 @@ fs.writeFileSync('public.key', publicKey);
 > - 由于RSA密钥可能包含换行符，在Vercel仪表板中添加时需要特别注意。确保完整复制和粘贴整个密钥，包括所有换行符。
 > - 数据库连接字符串中包含敏感信息，请确保它不会泄露或提交到代码仓库中。
 
-### 4. 部署应用
+### 4. RSA密钥格式问题的特别说明
+
+RSA密钥的格式必须严格按照PEM标准，包括：
+1. 正确的开头和结尾标记
+2. 每64个字符一个换行符
+3. 保留所有原始格式
+
+#### 复制RSA密钥的正确方法
+
+当你生成了密钥后，请遵循以下步骤确保格式正确：
+
+1. 使用文本编辑器（如VS Code、Notepad++等）打开密钥文件
+2. 确保看到完整的密钥，包括：
+   - 私钥的`-----BEGIN PRIVATE KEY-----`和`-----END PRIVATE KEY-----`
+   - 公钥的`-----BEGIN PUBLIC KEY-----`和`-----END PUBLIC KEY-----`
+3. 选择整个文件内容（Ctrl+A）并复制（Ctrl+C）
+4. 在Vercel环境变量输入框中粘贴（Ctrl+V）
+
+#### 如何处理Vercel仪表板中的换行符问题
+
+如果你无法在Vercel的环境变量输入框中保留换行符，可以使用以下替代方法：
+
+1. **使用Vercel CLI设置环境变量**：
+   ```bash
+   vercel env add RSA_PRIVATE_KEY
+   ```
+   使用此命令时，可以将内容粘贴到打开的编辑器中，这样可以保留所有格式。
+
+2. **使用BASE64编码**（高级选项）：
+   如果上述方法都不起作用，可以考虑修改代码，使用BASE64编码的密钥：
+   ```javascript
+   // 在本地将密钥进行BASE64编码
+   const fs = require('fs');
+   const privateKeyBase64 = fs.readFileSync('private.key').toString('base64');
+   console.log(privateKeyBase64); // 将此设置为环境变量
+
+   // 然后修改rsaUtils.ts中的getPrivateKey函数
+   function getPrivateKey() {
+     const privateKeyBase64 = process.env.RSA_PRIVATE_KEY_BASE64;
+     if (!privateKeyBase64) throw new Error('私钥未设置');
+     return Buffer.from(privateKeyBase64, 'base64').toString();
+   }
+   ```
+
+### 5. 部署应用
 
 设置好环境变量后，重新部署应用。现在，应用将使用环境变量中的RSA密钥和数据库连接信息。
 
@@ -110,6 +154,12 @@ A: Vercel的无服务器(serverless)架构提供的文件系统是只读的，�
 
 ### Q: 将密钥存储在环境变量中安全吗？
 A: Vercel的环境变量是加密存储的，通常比文件系统更安全。但请记住，私钥是敏感信息，永远不应该在客户端或公开代码中使用。
+
+### Q: 部署后出现"DECODER routines::unsupported"错误怎么办？
+A: 这通常表示RSA私钥格式不正确。请确保：
+1. 私钥完整，包括头部和尾部标记
+2. 保留了所有换行符
+3. 按照上述"RSA密钥格式问题的特别说明"部分的指导操作
 
 ### Q: 部署后出现"保存日志失败"错误怎么办？
 A: 这通常意味着数据库连接失败。请检查：
