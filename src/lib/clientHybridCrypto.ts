@@ -1,10 +1,8 @@
 "use client";
 
 import CryptoJS from "crypto-js";
-import {
-  IV_LENGTH,
-  SERVER_AES_KEY,
-} from "./cryptoConfig";
+import { IV_LENGTH, SERVER_AES_KEY } from "./cryptoConfig";
+import * as forge from 'node-forge';
 
 // 存储RSA公钥
 let rsaPublicKey: string | null = null;
@@ -104,54 +102,48 @@ function uint8ArrayToWordArray(u8arr: Uint8Array): CryptoJS.lib.WordArray {
 }
 
 /**
- * 使用浏览器的SubtleCrypto进行RSA加密
+ * 使用node-forge进行RSA加密(无填充)
  */
-async function rsaEncrypt(
-  data: Uint8Array,
-  publicKey: string
-): Promise<Uint8Array> {
+function rsaEncrypt(data: Uint8Array, publicKey: string): Uint8Array {
   try {
-    // 将PEM格式的公钥转换为ArrayBuffer
-    // 移除头尾和换行符，并进行Base64解码
-    const pemHeader = "-----BEGIN PUBLIC KEY-----";
-    const pemFooter = "-----END PUBLIC KEY-----";
-
-    const pemContents = publicKey
-      .replace(pemHeader, "")
-      .replace(pemFooter, "")
-      .replace(/\s+/g, "");
-
-    const binaryDer = atob(pemContents);
-    const der = new Uint8Array(binaryDer.length);
-    for (let i = 0; i < binaryDer.length; i++) {
-      der[i] = binaryDer.charCodeAt(i);
+    // 解析公钥
+    const publicKeyObj = forge.pki.publicKeyFromPem(publicKey);
+    
+    // 计算RSA密钥的字节长度
+    const keyLength = Math.ceil(publicKeyObj.n.bitLength() / 8);
+    
+    // 创建forge buffer并右填充数据
+    const buffer = forge.util.createBuffer();
+    
+    // 对齐数据长度 - 对于无填充模式，数据必须与模数长度完全相同
+    // 注意：这里需要左填充0，因为RSA是大整数运算，低位在右侧
+    const paddingLength = keyLength - data.length;
+    
+    // 添加前导零填充
+    for (let i = 0; i < paddingLength; i++) {
+      buffer.putByte(0);
     }
-
-    // 导入公钥 - 明确指定SHA-256哈希算法
-    const importedKey = await window.crypto.subtle.importKey(
-      "spki",
-      der.buffer,
-      {
-        name: "RSA-OAEP",
-        hash: { name: "SHA-256" },
-      },
-      false,
-      ["encrypt"]
-    );
-
-    // 加密数据
-    const encryptedBuffer = await window.crypto.subtle.encrypt(
-      {
-        name: "RSA-OAEP",
-      },
-      importedKey,
-      data
-    );
-
-    return new Uint8Array(encryptedBuffer);
+    
+    // 添加实际数据
+    for (let i = 0; i < data.length; i++) {
+      buffer.putByte(data[i]);
+    }
+    
+    // 进行无填充RSA加密
+    const encrypted = publicKeyObj.encrypt(buffer.getBytes(), 'NONE');
+    
+    // 将加密结果转换为Uint8Array
+    const resultBuffer = forge.util.createBuffer(encrypted);
+    const result = new Uint8Array(keyLength);
+    
+    for (let i = 0; i < keyLength; i++) {
+      result[i] = resultBuffer.getInt(8);
+    }
+    
+    return result;
   } catch (error) {
     console.error("RSA加密失败:", error);
-    throw new Error("RSA加密失败");
+    throw new Error("RSA加密失败: " + (error as Error).message);
   }
 }
 
@@ -189,7 +181,7 @@ export async function encryptData(data: unknown): Promise<ArrayBuffer> {
     const aesKeyBytes = wordArrayToUint8Array(aesKey);
 
     // 使用RSA公钥加密AES密钥
-    const encryptedAesKey = await rsaEncrypt(aesKeyBytes, publicKey);
+    const encryptedAesKey = rsaEncrypt(aesKeyBytes, publicKey);
 
     // 创建完整的加密数据包
     // 简化格式：加密密钥 + IV(16字节) + 加密数据
@@ -208,15 +200,12 @@ export async function encryptData(data: unknown): Promise<ArrayBuffer> {
     resultUint8.set(ivBytes, encryptedAesKey.length);
 
     // 写入加密内容
-    resultUint8.set(
-      contentBytes,
-      encryptedAesKey.length + ivBytes.length
-    );
+    resultUint8.set(contentBytes, encryptedAesKey.length + ivBytes.length);
 
     return resultBuffer;
   } catch (error) {
     console.error("客户端混合加密失败:", error);
-    throw new Error("加密数据失败");
+    throw new Error("加密数据失败: " + (error as Error).message);
   }
 }
 
@@ -267,6 +256,6 @@ export function decryptData(encryptedBytes: ArrayBufferLike): unknown {
     }
   } catch (error) {
     console.error("客户端解密失败:", error);
-    throw new Error("解密数据失败");
+    throw new Error("解密数据失败: " + (error as Error).message);
   }
 }

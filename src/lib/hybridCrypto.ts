@@ -30,15 +30,27 @@ export function hybridDecrypt(encryptedData: Buffer): unknown {
     const encryptedContent = encryptedData.slice(rsaOutputSize + IV_LENGTH);
 
     try {
-      // 使用RSA私钥解密AES密钥
-      const aesKey = crypto.privateDecrypt(
+      // 使用RSA私钥解密AES密钥 - 使用无填充方式
+      const rawDecrypted = crypto.privateDecrypt(
         {
           key: privateKey,
-          padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-          oaepHash: "sha256", // 匹配客户端的SHA-256哈希算法
+          padding: crypto.constants.RSA_NO_PADDING, // 无填充
         },
         encryptedAesKey
       );
+
+      // 处理无填充模式解密后的数据：去除前导零
+      // 客户端使用32字节AES密钥，所以我们需要从解密结果中提取最后32字节
+      // 无填充模式下，解密结果通常会包含前导零
+      const aesKeyLength = 32; // AES-256需要32字节密钥
+      const decryptedLength = rawDecrypted.length;
+      const aesKey =
+        decryptedLength <= aesKeyLength
+          ? Buffer.concat([
+              Buffer.alloc(aesKeyLength - decryptedLength, 0),
+              rawDecrypted,
+            ]) // 如果结果不足32字节，前面补零
+          : rawDecrypted.slice(decryptedLength - aesKeyLength); // 如果超过32字节，取最后32字节
 
       // 使用解密出的AES密钥和IV解密数据
       const decipher = crypto.createDecipheriv("aes-256-cbc", aesKey, iv);
@@ -58,7 +70,10 @@ export function hybridDecrypt(encryptedData: Buffer): unknown {
     }
   } catch (error) {
     console.error("混合解密失败:", error);
-    throw new Error("解密数据失败");
+    throw new Error(
+      "解密数据失败: " +
+        (error instanceof Error ? error.message : String(error))
+    );
   }
 }
 
@@ -90,6 +105,9 @@ export function hybridEncrypt(data: unknown): Buffer {
     return Buffer.concat([iv, encrypted]);
   } catch (error) {
     console.error("加密失败:", error);
-    throw new Error("加密数据失败");
+    throw new Error(
+      "加密数据失败: " +
+        (error instanceof Error ? error.message : String(error))
+    );
   }
 }
