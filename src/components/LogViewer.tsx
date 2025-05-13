@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { LogForm } from "@/components/LogForm";
 import { decryptData } from "@/lib/clientHybridCrypto";
 
 type Log = {
@@ -117,10 +116,7 @@ export function LogViewer() {
     }
   };
 
-  // 添加新日志后刷新列表
-  const handleLogAdded = () => {
-    fetchLogs();
-  };
+
 
   // 切换日志展开/折叠状态
   const toggleExpand = (id: number) => {
@@ -468,11 +464,6 @@ export function LogViewer() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">添加新日志</h2>
-        <LogForm onLogAdded={handleLogAdded} />
-      </div>
-
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">日志列表</h2>
