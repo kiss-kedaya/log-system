@@ -20,6 +20,11 @@ type HoverInfo = {
   y: number;
 };
 
+type DeleteConfirmInfo = {
+  id: number;
+  isDeleting: boolean;
+};
+
 export function LogViewer() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +33,9 @@ export function LogViewer() {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'created_at', direction: 'desc' });
   const [logKeys, setLogKeys] = useState<string[]>([]);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmInfo | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
   
   // 用于跟踪鼠标是否在悬浮框内
   const hoverCardRef = useRef<HTMLDivElement>(null);
@@ -102,6 +110,63 @@ export function LogViewer() {
   const handleHoverCardMouseLeave = () => {
     setIsMouseInHoverCard(false);
     setHoverInfo(null);
+  };
+  
+  // 显示删除确认对话框
+  const handleDeleteClick = (id: number) => {
+    setDeleteConfirm({ id, isDeleting: false });
+    // 清除之前的成功/错误消息
+    setDeleteError(null);
+    setDeleteSuccess(null);
+  };
+  
+  // 取消删除
+  const handleCancelDelete = () => {
+    setDeleteConfirm(null);
+  };
+  
+  // 确认删除
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
+    
+    try {
+      setDeleteConfirm({ ...deleteConfirm, isDeleting: true });
+      
+      const response = await fetch(`/api/logs?id=${deleteConfirm.id}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "删除日志失败");
+      }
+      
+      // 删除成功
+      setDeleteSuccess(`日志(ID: ${deleteConfirm.id})已成功删除`);
+      
+      // 从本地状态中移除已删除的日志
+      setLogs(prevLogs => prevLogs.filter(log => log.id !== deleteConfirm.id));
+      
+      // 如果当前展开的是被删除的日志，则关闭展开视图
+      if (expandedLog === deleteConfirm.id) {
+        setExpandedLog(null);
+      }
+      
+      // 3秒后清除成功消息
+      setTimeout(() => {
+        setDeleteSuccess(null);
+      }, 3000);
+      
+    } catch (err) {
+      console.error("删除日志失败:", err);
+      if (err instanceof Error) {
+        setDeleteError(err.message || "删除日志失败，请稍后再试");
+      } else {
+        setDeleteError("删除日志失败，请稍后再试");
+      }
+    } finally {
+      setDeleteConfirm(null);
+    }
   };
 
   // 处理排序
@@ -186,6 +251,20 @@ export function LogViewer() {
             刷新
           </button>
         </div>
+        
+        {/* 删除成功消息 */}
+        {deleteSuccess && (
+          <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+            {deleteSuccess}
+          </div>
+        )}
+        
+        {/* 删除错误消息 */}
+        {deleteError && (
+          <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+            {deleteError}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-8">
@@ -259,12 +338,20 @@ export function LogViewer() {
                     ))}
                     
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <button
-                        onClick={() => toggleExpand(log.id)}
-                        className="text-blue-500 hover:text-blue-700"
-                      >
-                        {expandedLog === log.id ? '折叠' : '展开'}
-                      </button>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => toggleExpand(log.id)}
+                          className="text-blue-500 hover:text-blue-700"
+                        >
+                          {expandedLog === log.id ? '折叠' : '展开'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(log.id)}
+                          className="text-red-500 hover:text-red-700 ml-3"
+                        >
+                          删除
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -296,6 +383,44 @@ export function LogViewer() {
                 <pre className="whitespace-pre-wrap text-sm overflow-x-auto max-h-60">
                   {JSON.stringify(hoverInfo.content, null, 2)}
                 </pre>
+              </div>
+            )}
+            
+            {/* 删除确认对话框 */}
+            {deleteConfirm && (
+              <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4">
+                  <h3 className="text-lg font-semibold mb-4">确认删除</h3>
+                  <p className="mb-6">
+                    您确定要删除ID为 <span className="font-semibold">{deleteConfirm.id}</span> 的日志吗？此操作无法撤销。
+                  </p>
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      onClick={handleCancelDelete}
+                      disabled={deleteConfirm.isDeleting}
+                      className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-100 transition"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleConfirmDelete}
+                      disabled={deleteConfirm.isDeleting}
+                      className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition flex items-center"
+                    >
+                      {deleteConfirm.isDeleting ? (
+                        <>
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          处理中...
+                        </>
+                      ) : (
+                        "确认删除"
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
