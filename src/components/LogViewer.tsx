@@ -32,6 +32,15 @@ type SearchFilters = {
   startDate: string;
   endDate: string;
   excludeTerms: string; // 新增：排除关键词
+  searchItems: SearchItem[]; // 新增：动态搜索项列表
+};
+
+// 新增：单个搜索项类型
+type SearchItem = {
+  id: string;
+  field: string;
+  value: string;
+  type: "include" | "exclude"; // 包含或排除
 };
 
 export function LogViewer() {
@@ -62,6 +71,7 @@ export function LogViewer() {
     startDate: "",
     endDate: "",
     excludeTerms: "",
+    searchItems: [],
   });
 
   // 用于跟踪鼠标是否在悬浮框内
@@ -316,6 +326,7 @@ export function LogViewer() {
       startDate: "",
       endDate: "",
       excludeTerms: "",
+      searchItems: [],
     });
   };
 
@@ -336,6 +347,38 @@ export function LogViewer() {
         isLogMatchingKeyword(log, searchFilters.excludeTerms)
       ) {
         return false;
+      }
+
+      // 动态搜索项过滤
+      for (const item of searchFilters.searchItems) {
+        if (!item.field || !item.value) continue;
+
+        const fieldExists =
+          item.field === "id" ||
+          item.field === "created_at" ||
+          Object.keys(log.data).includes(item.field);
+
+        if (!fieldExists) continue;
+
+        const logValue =
+          item.field === "id"
+            ? String(log.id)
+            : item.field === "created_at"
+            ? new Date(log.created_at).toLocaleString()
+            : log.data[item.field] !== undefined
+            ? String(log.data[item.field])
+            : "";
+
+        const isMatching = logValue
+          .toLowerCase()
+          .includes(item.value.toLowerCase());
+
+        if (
+          (item.type === "include" && !isMatching) ||
+          (item.type === "exclude" && isMatching)
+        ) {
+          return false;
+        }
       }
 
       // 日期范围过滤
@@ -463,6 +506,45 @@ export function LogViewer() {
     router.push("/login");
   };
 
+  // 新增：添加搜索项
+  const handleAddSearchItem = () => {
+    const newId = `search-item-${Date.now()}`;
+    setSearchFilters((prev) => ({
+      ...prev,
+      searchItems: [
+        ...prev.searchItems,
+        {
+          id: newId,
+          field: "",
+          value: "",
+          type: "include",
+        },
+      ],
+    }));
+  };
+
+  // 新增：删除搜索项
+  const handleRemoveSearchItem = (id: string) => {
+    setSearchFilters((prev) => ({
+      ...prev,
+      searchItems: prev.searchItems.filter((item) => item.id !== id),
+    }));
+  };
+
+  // 新增：更新搜索项
+  const handleSearchItemChange = (
+    id: string,
+    field: string,
+    value: string | "include" | "exclude"
+  ) => {
+    setSearchFilters((prev) => ({
+      ...prev,
+      searchItems: prev.searchItems.map((item) =>
+        item.id === id ? { ...item, [field]: value } : item
+      ),
+    }));
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -575,11 +657,109 @@ export function LogViewer() {
           {(searchFilters.keyword ||
             searchFilters.excludeTerms ||
             searchFilters.startDate ||
-            searchFilters.endDate) && (
+            searchFilters.endDate ||
+            searchFilters.searchItems.length > 0) && (
             <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
               过滤结果: {filteredAndSortedLogs.length} / {logs.length} 条日志
             </div>
           )}
+
+          {/* 新增：动态搜索项 */}
+          {searchFilters.searchItems.length > 0 && (
+            <div className="mt-4 space-y-3">
+              <h4 className="text-sm font-medium">自定义搜索条件</h4>
+              {searchFilters.searchItems.map((item) => (
+                <div key={item.id} className="flex items-center space-x-2">
+                  <select
+                    value={item.field}
+                    onChange={(e) =>
+                      handleSearchItemChange(item.id, "field", e.target.value)
+                    }
+                    className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">选择字段</option>
+                    <option value="id">ID</option>
+                    <option value="created_at">时间</option>
+                    {logKeys.map((key) => (
+                      <option key={key} value={key}>
+                        {key}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={item.type}
+                    onChange={(e) =>
+                      handleSearchItemChange(
+                        item.id,
+                        "type",
+                        e.target.value as "include" | "exclude"
+                      )
+                    }
+                    className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="include">包含</option>
+                    <option value="exclude">排除</option>
+                  </select>
+
+                  <input
+                    type="text"
+                    value={item.value}
+                    onChange={(e) =>
+                      handleSearchItemChange(item.id, "value", e.target.value)
+                    }
+                    placeholder="输入搜索值..."
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  />
+
+                  <button
+                    onClick={() => handleRemoveSearchItem(item.id)}
+                    className="p-2 text-red-500 hover:text-red-700"
+                    title="删除此条件"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 新增：添加搜索条件按钮 */}
+          <div className="mt-3 flex justify-start">
+            <button
+              onClick={handleAddSearchItem}
+              className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition flex items-center"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4 mr-1"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              添加搜索条件
+            </button>
+          </div>
         </div>
 
         {/* 删除成功消息 */}
