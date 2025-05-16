@@ -26,13 +26,12 @@ type DeleteConfirmInfo = {
   isDeleting: boolean;
 };
 
-
-
 // 新增：搜索过滤器类型
 type SearchFilters = {
   keyword: string;
   startDate: string;
   endDate: string;
+  excludeTerms: string; // 新增：排除关键词
 };
 
 export function LogViewer() {
@@ -59,9 +58,10 @@ export function LogViewer() {
 
   // 新增：搜索过滤器状态
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({
-    keyword: '',
-    startDate: '',
-    endDate: ''
+    keyword: "",
+    startDate: "",
+    endDate: "",
+    excludeTerms: "",
   });
 
   // 用于跟踪鼠标是否在悬浮框内
@@ -147,7 +147,7 @@ export function LogViewer() {
   // 显示批量删除确认对话框
   const handleBulkDeleteClick = () => {
     if (selectedLogs.length === 0) return;
-    
+
     setDeleteConfirm({ id: selectedLogs, isDeleting: false });
     // 清除之前的成功/错误消息
     setDeleteError(null);
@@ -176,7 +176,12 @@ export function LogViewer() {
         }
 
         // 删除成功
-        setDeleteSuccess(`已成功删除 ${(response.data as {count: number})?.count || deleteConfirm.id.length} 条日志`);
+        setDeleteSuccess(
+          `已成功删除 ${
+            (response.data as { count: number })?.count ||
+            deleteConfirm.id.length
+          } 条日志`
+        );
 
         // 从本地状态中移除已删除的日志
         setLogs((prevLogs) => {
@@ -213,7 +218,7 @@ export function LogViewer() {
         );
 
         // 从选中列表中移除
-        setSelectedLogs(prev => prev.filter(id => id !== deleteConfirm.id));
+        setSelectedLogs((prev) => prev.filter((id) => id !== deleteConfirm.id));
 
         // 如果当前展开的是被删除的日志，则关闭展开视图
         if (expandedLog === deleteConfirm.id) {
@@ -240,9 +245,9 @@ export function LogViewer() {
   // 处理单个日志选择
   const handleSelectLog = (id: number, checked: boolean) => {
     if (checked) {
-      setSelectedLogs(prev => [...prev, id]);
+      setSelectedLogs((prev) => [...prev, id]);
     } else {
-      setSelectedLogs(prev => prev.filter(logId => logId !== id));
+      setSelectedLogs((prev) => prev.filter((logId) => logId !== id));
       setSelectAll(false);
     }
   };
@@ -252,7 +257,7 @@ export function LogViewer() {
     setSelectAll(checked);
     if (checked) {
       // 全选所有日志
-      setSelectedLogs(logs.map(log => log.id));
+      setSelectedLogs(logs.map((log) => log.id));
     } else {
       // 取消全选
       setSelectedLogs([]);
@@ -298,48 +303,70 @@ export function LogViewer() {
   // 新增：处理搜索过滤器变化
   const handleSearchFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setSearchFilters(prev => ({
+    setSearchFilters((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
   // 新增：处理搜索过滤器重置
   const handleResetFilters = () => {
     setSearchFilters({
-      keyword: '',
-      startDate: '',
-      endDate: ''
+      keyword: "",
+      startDate: "",
+      endDate: "",
+      excludeTerms: "",
     });
   };
 
   // 新增：过滤日志函数
   const filterLogs = (logs: Log[]) => {
-    return logs.filter(log => {
+    return logs.filter((log) => {
       // 关键词过滤
-      if (searchFilters.keyword && !isLogMatchingKeyword(log, searchFilters.keyword)) {
+      if (
+        searchFilters.keyword &&
+        !isLogMatchingKeyword(log, searchFilters.keyword)
+      ) {
         return false;
       }
-      
+
+      // 排除关键词过滤
+      if (
+        searchFilters.excludeTerms &&
+        isLogMatchingKeyword(log, searchFilters.excludeTerms)
+      ) {
+        return false;
+      }
+
       // 日期范围过滤
       const logDate = new Date(log.created_at).getTime();
-      
+
       // 开始日期过滤
       if (searchFilters.startDate) {
-        const startDate = new Date(searchFilters.startDate).setHours(0, 0, 0, 0);
+        const startDate = new Date(searchFilters.startDate).setHours(
+          0,
+          0,
+          0,
+          0
+        );
         if (logDate < startDate) {
           return false;
         }
       }
-      
+
       // 结束日期过滤
       if (searchFilters.endDate) {
-        const endDate = new Date(searchFilters.endDate).setHours(23, 59, 59, 999);
+        const endDate = new Date(searchFilters.endDate).setHours(
+          23,
+          59,
+          59,
+          999
+        );
         if (logDate > endDate) {
           return false;
         }
       }
-      
+
       return true;
     });
   };
@@ -347,22 +374,27 @@ export function LogViewer() {
   // 新增：检查日志是否包含关键词
   const isLogMatchingKeyword = (log: Log, keyword: string) => {
     const keywordLower = keyword.toLowerCase();
-    
+
     // 检查ID
     if (String(log.id).includes(keywordLower)) {
       return true;
     }
-    
+
     // 检查日期
-    if (new Date(log.created_at).toLocaleString().toLowerCase().includes(keywordLower)) {
+    if (
+      new Date(log.created_at)
+        .toLocaleString()
+        .toLowerCase()
+        .includes(keywordLower)
+    ) {
       return true;
     }
-    
+
     // 检查日志内容
     for (const key in log.data) {
       const value = log.data[key];
       if (value !== null && value !== undefined) {
-        if (typeof value === 'object') {
+        if (typeof value === "object") {
           // 对象类型：转为JSON字符串进行搜索
           if (JSON.stringify(value).toLowerCase().includes(keywordLower)) {
             return true;
@@ -375,7 +407,7 @@ export function LogViewer() {
         }
       }
     }
-    
+
     return false;
   };
 
@@ -463,10 +495,13 @@ export function LogViewer() {
         {/* 新增：搜索过滤器 */}
         <div className="mb-6 bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
           <h3 className="text-md font-medium mb-3">搜索过滤</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="keyword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                关键词
+              <label
+                htmlFor="keyword"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
+                搜索关键词
               </label>
               <input
                 type="text"
@@ -479,7 +514,27 @@ export function LogViewer() {
               />
             </div>
             <div>
-              <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="excludeTerms"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
+                排除关键词
+              </label>
+              <input
+                type="text"
+                id="excludeTerms"
+                name="excludeTerms"
+                value={searchFilters.excludeTerms}
+                onChange={handleSearchFilterChange}
+                placeholder="排除包含这些词的日志..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="startDate"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 开始日期
               </label>
               <input
@@ -492,7 +547,10 @@ export function LogViewer() {
               />
             </div>
             <div>
-              <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="endDate"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 结束日期
               </label>
               <input
@@ -513,8 +571,11 @@ export function LogViewer() {
               重置过滤器
             </button>
           </div>
-          {/* 新增：显示过滤结果统计 */}
-          {(searchFilters.keyword || searchFilters.startDate || searchFilters.endDate) && (
+          {/* 显示过滤结果统计 */}
+          {(searchFilters.keyword ||
+            searchFilters.excludeTerms ||
+            searchFilters.startDate ||
+            searchFilters.endDate) && (
             <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
               过滤结果: {filteredAndSortedLogs.length} / {logs.length} 条日志
             </div>
@@ -546,211 +607,225 @@ export function LogViewer() {
         ) : logs.length === 0 ? (
           <div className="text-center py-8 text-gray-500">暂无日志数据</div>
         ) : filteredAndSortedLogs.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">没有匹配的日志数据</div>
+          <div className="text-center py-8 text-gray-500">
+            没有匹配的日志数据
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50 dark:bg-gray-700">
-                <tr>
-                  {/* 全选复选框 */}
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <input
-                      type="checkbox"
-                      checked={selectAll}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="form-checkbox h-4 w-4 text-blue-600 transition duration-150 ease-in-out"
-                    />
-                  </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("id")}
-                  >
-                    ID {getSortIcon("id")}
-                  </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => handleSort("created_at")}
-                  >
-                    时间 {getSortIcon("created_at")}
-                  </th>
-
-                  {/* 动态生成日志属性列 */}
-                  {logKeys.map((key) => (
-                    <th
-                      key={key}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                      onClick={() => handleSort(key)}
-                    >
-                      {key} {getSortIcon(key)}
-                    </th>
-                  ))}
-
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200">
-                {filteredAndSortedLogs.map((log) => (
-                  <tr
-                    key={log.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700"
-                  >
-                    {/* 单选复选框 */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+            <div className="max-h-[600px] overflow-y-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
+                  <tr>
+                    {/* 全选复选框 */}
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <input
                         type="checkbox"
-                        checked={selectedLogs.includes(log.id)}
-                        onChange={(e) => handleSelectLog(log.id, e.target.checked)}
+                        checked={selectAll}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
                         className="form-checkbox h-4 w-4 text-blue-600 transition duration-150 ease-in-out"
                       />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {log.id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(log.created_at).toLocaleString()}
-                    </td>
+                    </th>
+                    <th
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      onClick={() => handleSort("id")}
+                    >
+                      ID {getSortIcon("id")}
+                    </th>
+                    <th
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      onClick={() => handleSort("created_at")}
+                    >
+                      时间 {getSortIcon("created_at")}
+                    </th>
 
-                    {/* 动态显示日志属性值 */}
+                    {/* 动态生成日志属性列 */}
                     {logKeys.map((key) => (
-                      <td
+                      <th
                         key={key}
-                        className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort(key)}
                       >
-                        {typeof log.data[key] === "object" &&
-                        log.data[key] !== null ? (
-                          <span
-                            className="text-blue-500 cursor-pointer underline"
-                            onMouseEnter={(e) =>
-                              handleMouseEnter(log.data[key], e)
-                            }
-                            onMouseLeave={handleMouseLeave}
-                          >
-                            [Object]
-                          </span>
-                        ) : (
-                          String(log.data[key] ?? "-")
-                        )}
-                      </td>
+                        {key} {getSortIcon(key)}
+                      </th>
                     ))}
 
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => toggleExpand(log.id)}
-                          className="text-blue-500 hover:text-blue-700"
-                        >
-                          {expandedLog === log.id ? "折叠" : "展开"}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(log.id)}
-                          className="text-red-500 hover:text-red-700 ml-3"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </td>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      操作
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* 展开的日志详情 */}
-            {expandedLog !== null && (
-              <div className="mt-2 p-4 border bg-gray-50 dark:bg-gray-700 rounded">
-                <h3 className="text-sm font-medium mb-2">
-                  日志详情 (ID: {expandedLog})
-                </h3>
-                <pre className="whitespace-pre-wrap text-sm overflow-x-auto">
-                  {JSON.stringify(
-                    logs.find((log) => log.id === expandedLog)?.data,
-                    null,
-                    2
-                  )}
-                </pre>
-              </div>
-            )}
-
-            {/* 悬浮显示对象信息 */}
-            {hoverInfo && (
-              <div
-                ref={hoverCardRef}
-                className="fixed bg-white dark:bg-gray-800 shadow-lg rounded-md p-4 border border-gray-200 dark:border-gray-700 z-50 max-w-md"
-                style={{
-                  top: `${hoverInfo.y + 10}px`,
-                  left: `${hoverInfo.x + 10}px`,
-                }}
-                onMouseEnter={handleHoverCardMouseEnter}
-                onMouseLeave={handleHoverCardMouseLeave}
-              >
-                <pre className="whitespace-pre-wrap text-sm overflow-x-auto max-h-60">
-                  {JSON.stringify(hoverInfo.content, null, 2)}
-                </pre>
-              </div>
-            )}
-
-            {/* 删除确认对话框 */}
-            {deleteConfirm && (
-              <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4">
-                  <h3 className="text-lg font-semibold mb-4">确认删除</h3>
-                  <p className="mb-6">
-                    {Array.isArray(deleteConfirm.id) ? (
-                      <>
-                        您确定要删除选中的 <span className="font-semibold">{deleteConfirm.id.length}</span> 条日志吗？此操作无法撤销。
-                      </>
-                    ) : (
-                      <>
-                        您确定要删除ID为 <span className="font-semibold">{deleteConfirm.id}</span> 的日志吗？此操作无法撤销。
-                      </>
-                    )}
-                  </p>
-                  <div className="flex justify-end space-x-3">
-                    <button
-                      onClick={handleCancelDelete}
-                      disabled={deleteConfirm.isDeleting}
-                      className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-100 transition"
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200">
+                  {filteredAndSortedLogs.map((log) => (
+                    <tr
+                      key={log.id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700"
                     >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleConfirmDelete}
-                      disabled={deleteConfirm.isDeleting}
-                      className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition flex items-center"
-                    >
-                      {deleteConfirm.isDeleting ? (
-                        <>
-                          <svg
-                            className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
+                      {/* 单选复选框 */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <input
+                          type="checkbox"
+                          checked={selectedLogs.includes(log.id)}
+                          onChange={(e) =>
+                            handleSelectLog(log.id, e.target.checked)
+                          }
+                          className="form-checkbox h-4 w-4 text-blue-600 transition duration-150 ease-in-out"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {log.id}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(log.created_at).toLocaleString()}
+                      </td>
+
+                      {/* 动态显示日志属性值 */}
+                      {logKeys.map((key) => (
+                        <td
+                          key={key}
+                          className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                        >
+                          {typeof log.data[key] === "object" &&
+                          log.data[key] !== null ? (
+                            <span
+                              className="text-blue-500 cursor-pointer underline"
+                              onMouseEnter={(e) =>
+                                handleMouseEnter(log.data[key], e)
+                              }
+                              onMouseLeave={handleMouseLeave}
+                            >
+                              [Object]
+                            </span>
+                          ) : (
+                            String(log.data[key] ?? "-")
+                          )}
+                        </td>
+                      ))}
+
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => toggleExpand(log.id)}
+                            className="text-blue-500 hover:text-blue-700"
                           >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            ></circle>
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            ></path>
-                          </svg>
-                          处理中...
+                            {expandedLog === log.id ? "折叠" : "展开"}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClick(log.id)}
+                            className="text-red-500 hover:text-red-700 ml-3"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* 展开的日志详情 */}
+              {expandedLog !== null && (
+                <div className="mt-2 p-4 border bg-gray-50 dark:bg-gray-700 rounded">
+                  <h3 className="text-sm font-medium mb-2">
+                    日志详情 (ID: {expandedLog})
+                  </h3>
+                  <pre className="whitespace-pre-wrap text-sm overflow-x-auto">
+                    {JSON.stringify(
+                      logs.find((log) => log.id === expandedLog)?.data,
+                      null,
+                      2
+                    )}
+                  </pre>
+                </div>
+              )}
+
+              {/* 悬浮显示对象信息 */}
+              {hoverInfo && (
+                <div
+                  ref={hoverCardRef}
+                  className="fixed bg-white dark:bg-gray-800 shadow-lg rounded-md p-4 border border-gray-200 dark:border-gray-700 z-50 max-w-md"
+                  style={{
+                    top: `${hoverInfo.y + 10}px`,
+                    left: `${hoverInfo.x + 10}px`,
+                  }}
+                  onMouseEnter={handleHoverCardMouseEnter}
+                  onMouseLeave={handleHoverCardMouseLeave}
+                >
+                  <pre className="whitespace-pre-wrap text-sm overflow-x-auto max-h-60">
+                    {JSON.stringify(hoverInfo.content, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {/* 删除确认对话框 */}
+              {deleteConfirm && (
+                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4">
+                    <h3 className="text-lg font-semibold mb-4">确认删除</h3>
+                    <p className="mb-6">
+                      {Array.isArray(deleteConfirm.id) ? (
+                        <>
+                          您确定要删除选中的{" "}
+                          <span className="font-semibold">
+                            {deleteConfirm.id.length}
+                          </span>{" "}
+                          条日志吗？此操作无法撤销。
                         </>
                       ) : (
-                        "确认删除"
+                        <>
+                          您确定要删除ID为{" "}
+                          <span className="font-semibold">
+                            {deleteConfirm.id}
+                          </span>{" "}
+                          的日志吗？此操作无法撤销。
+                        </>
                       )}
-                    </button>
+                    </p>
+                    <div className="flex justify-end space-x-3">
+                      <button
+                        onClick={handleCancelDelete}
+                        disabled={deleteConfirm.isDeleting}
+                        className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-100 transition"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={handleConfirmDelete}
+                        disabled={deleteConfirm.isDeleting}
+                        className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition flex items-center"
+                      >
+                        {deleteConfirm.isDeleting ? (
+                          <>
+                            <svg
+                              className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                            处理中...
+                          </>
+                        ) : (
+                          "确认删除"
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
       </div>
