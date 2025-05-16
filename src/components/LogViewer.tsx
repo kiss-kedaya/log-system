@@ -612,7 +612,7 @@ export function LogViewer() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <div className="max-h-[600px] overflow-y-auto">
+            <div className="max-h-[800px] overflow-y-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                   <tr>
