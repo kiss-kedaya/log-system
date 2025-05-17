@@ -1,8 +1,10 @@
 "use client";
 
+import React from "react";
 import { useState, useEffect, useRef } from "react";
 import { fetchLogs, deleteLog, bulkDeleteLogs } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 
 type Log = {
   id: number;
@@ -28,19 +30,11 @@ type DeleteConfirmInfo = {
 
 // 新增：搜索过滤器类型
 type SearchFilters = {
-  keyword: string;
-  startDate: string;
-  endDate: string;
-  excludeTerms: string; // 新增：排除关键词
-  searchItems: SearchItem[]; // 新增：动态搜索项列表
-};
-
-// 新增：单个搜索项类型
-type SearchItem = {
-  id: string;
-  field: string;
-  value: string;
-  type: "include" | "exclude"; // 包含或排除
+  keyword: string; // 关键词（搜索或排除）
+  searchType: string; // 搜索类型（字段）
+  searchMode: "include" | "exclude"; // 搜索模式：包含或排除
+  startDate: string; // 开始日期
+  endDate: string; // 结束日期
 };
 
 export function LogViewer() {
@@ -70,8 +64,8 @@ export function LogViewer() {
     keyword: "",
     startDate: "",
     endDate: "",
-    excludeTerms: "",
-    searchItems: [],
+    searchType: "",
+    searchMode: "include",
   });
 
   // 用于跟踪鼠标是否在悬浮框内
@@ -306,12 +300,46 @@ export function LogViewer() {
     }
 
     return (
-      <span className="ml-1">{sortConfig.direction === "asc" ? "↑" : "↓"}</span>
+      <span className="ml-1 text-blue-500">
+        {sortConfig.direction === "asc" ? (
+          <svg
+            className="w-4 h-4 inline"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M5 15l7-7 7 7"
+            ></path>
+          </svg>
+        ) : (
+          <svg
+            className="w-4 h-4 inline"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M19 9l-7 7-7-7"
+            ></path>
+          </svg>
+        )}
+      </span>
     );
   };
 
-  // 新增：处理搜索过滤器变化
-  const handleSearchFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 处理搜索过滤器变化
+  const handleSearchFilterChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
     setSearchFilters((prev) => ({
       ...prev,
@@ -325,58 +353,60 @@ export function LogViewer() {
       keyword: "",
       startDate: "",
       endDate: "",
-      excludeTerms: "",
-      searchItems: [],
+      searchType: "",
+      searchMode: "include",
     });
   };
 
-  // 新增：过滤日志函数
+  // 过滤日志函数
   const filterLogs = (logs: Log[]) => {
     return logs.filter((log) => {
       // 关键词过滤
-      if (
-        searchFilters.keyword &&
-        !isLogMatchingKeyword(log, searchFilters.keyword)
-      ) {
-        return false;
-      }
+      if (searchFilters.keyword) {
+        const isMatching = (() => {
+          // 根据搜索类型过滤
+          if (searchFilters.searchType) {
+            if (searchFilters.searchType === "id") {
+              // 按ID搜索
+              return String(log.id)
+                .toLowerCase()
+                .includes(searchFilters.keyword.toLowerCase());
+            } else if (searchFilters.searchType === "time") {
+              // 按时间搜索
+              return new Date(log.created_at)
+                .toLocaleString()
+                .toLowerCase()
+                .includes(searchFilters.keyword.toLowerCase());
+            } else {
+              // 按特定字段搜索
+              const value = log.data[searchFilters.searchType];
+              if (value === undefined || value === null) {
+                return false;
+              }
 
-      // 排除关键词过滤
-      if (
-        searchFilters.excludeTerms &&
-        isLogMatchingKeyword(log, searchFilters.excludeTerms)
-      ) {
-        return false;
-      }
+              if (typeof value === "object") {
+                // 对象类型：转为JSON字符串进行搜索
+                return JSON.stringify(value)
+                  .toLowerCase()
+                  .includes(searchFilters.keyword.toLowerCase());
+              } else {
+                // 基本类型：转为字符串进行搜索
+                return String(value)
+                  .toLowerCase()
+                  .includes(searchFilters.keyword.toLowerCase());
+              }
+            }
+          } else {
+            // 无类型，全局搜索
+            return isLogMatchingKeyword(log, searchFilters.keyword);
+          }
+        })();
 
-      // 动态搜索项过滤
-      for (const item of searchFilters.searchItems) {
-        if (!item.field || !item.value) continue;
-
-        const fieldExists =
-          item.field === "id" ||
-          item.field === "created_at" ||
-          Object.keys(log.data).includes(item.field);
-
-        if (!fieldExists) continue;
-
-        const logValue =
-          item.field === "id"
-            ? String(log.id)
-            : item.field === "created_at"
-            ? new Date(log.created_at).toLocaleString()
-            : log.data[item.field] !== undefined
-            ? String(log.data[item.field])
-            : "";
-
-        const isMatching = logValue
-          .toLowerCase()
-          .includes(item.value.toLowerCase());
-
-        if (
-          (item.type === "include" && !isMatching) ||
-          (item.type === "exclude" && isMatching)
-        ) {
+        // 根据搜索模式决定是包含还是排除
+        if (searchFilters.searchMode === "include" && !isMatching) {
+          return false;
+        }
+        if (searchFilters.searchMode === "exclude" && isMatching) {
           return false;
         }
       }
@@ -506,509 +536,1003 @@ export function LogViewer() {
     router.push("/login");
   };
 
-  // 新增：添加搜索项
-  const handleAddSearchItem = () => {
-    const newId = `search-item-${Date.now()}`;
-    setSearchFilters((prev) => ({
-      ...prev,
-      searchItems: [
-        ...prev.searchItems,
-        {
-          id: newId,
-          field: "",
-          value: "",
-          type: "include",
-        },
-      ],
-    }));
-  };
-
-  // 新增：删除搜索项
-  const handleRemoveSearchItem = (id: string) => {
-    setSearchFilters((prev) => ({
-      ...prev,
-      searchItems: prev.searchItems.filter((item) => item.id !== id),
-    }));
-  };
-
-  // 新增：更新搜索项
-  const handleSearchItemChange = (
-    id: string,
-    field: string,
-    value: string | "include" | "exclude"
-  ) => {
-    setSearchFilters((prev) => ({
-      ...prev,
-      searchItems: prev.searchItems.map((item) =>
-        item.id === id ? { ...item, [field]: value } : item
-      ),
-    }));
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">日志列表</h2>
-          <div className="flex items-center space-x-2">
+    <div className="space-y-6 p-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-100 dark:border-gray-700"
+      >
+        <div className="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-700 pb-4">
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center">
+            <svg
+              className="w-6 h-6 mr-2 text-blue-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              ></path>
+            </svg>
+            日志列表
+          </h2>
+          <div className="flex items-center space-x-3">
             {selectedLogs.length > 0 && (
-              <button
+              <motion.button
+                whileTap={{ scale: 0.95 }}
                 onClick={handleBulkDeleteClick}
-                className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition"
+                className="px-4 py-2 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600 transition-all duration-200 flex items-center"
               >
+                <svg
+                  className="w-4 h-4 mr-1"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  ></path>
+                </svg>
                 批量删除 ({selectedLogs.length})
-              </button>
+              </motion.button>
             )}
-            <button
+            <motion.button
+              whileTap={{ scale: 0.95 }}
               onClick={fetchLogsData}
-              className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
-            >
-              刷新
-            </button>
-            <button
-              onClick={handleLogout}
-              className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition"
-            >
-              登出
-            </button>
-          </div>
-        </div>
-
-        {/* 新增：搜索过滤器 */}
-        <div className="mb-6 bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-          <h3 className="text-md font-medium mb-3">搜索过滤</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="keyword"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                搜索关键词
-              </label>
-              <input
-                type="text"
-                id="keyword"
-                name="keyword"
-                value={searchFilters.keyword}
-                onChange={handleSearchFilterChange}
-                placeholder="搜索关键词..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="excludeTerms"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                排除关键词
-              </label>
-              <input
-                type="text"
-                id="excludeTerms"
-                name="excludeTerms"
-                value={searchFilters.excludeTerms}
-                onChange={handleSearchFilterChange}
-                placeholder="排除包含这些词的日志..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="startDate"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                开始日期
-              </label>
-              <input
-                type="date"
-                id="startDate"
-                name="startDate"
-                value={searchFilters.startDate}
-                onChange={handleSearchFilterChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="endDate"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                结束日期
-              </label>
-              <input
-                type="date"
-                id="endDate"
-                name="endDate"
-                value={searchFilters.endDate}
-                onChange={handleSearchFilterChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
-          <div className="mt-3 flex justify-end">
-            <button
-              onClick={handleResetFilters}
-              className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition"
-            >
-              重置过滤器
-            </button>
-          </div>
-          {/* 显示过滤结果统计 */}
-          {(searchFilters.keyword ||
-            searchFilters.excludeTerms ||
-            searchFilters.startDate ||
-            searchFilters.endDate ||
-            searchFilters.searchItems.length > 0) && (
-            <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              过滤结果: {filteredAndSortedLogs.length} / {logs.length} 条日志
-            </div>
-          )}
-
-          {/* 新增：动态搜索项 */}
-          {searchFilters.searchItems.length > 0 && (
-            <div className="mt-4 space-y-3">
-              <h4 className="text-sm font-medium">自定义搜索条件</h4>
-              {searchFilters.searchItems.map((item) => (
-                <div key={item.id} className="flex items-center space-x-2">
-                  <select
-                    value={item.field}
-                    onChange={(e) =>
-                      handleSearchItemChange(item.id, "field", e.target.value)
-                    }
-                    className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">选择字段</option>
-                    <option value="id">ID</option>
-                    <option value="created_at">时间</option>
-                    {logKeys.map((key) => (
-                      <option key={key} value={key}>
-                        {key}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={item.type}
-                    onChange={(e) =>
-                      handleSearchItemChange(
-                        item.id,
-                        "type",
-                        e.target.value as "include" | "exclude"
-                      )
-                    }
-                    className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="include">包含</option>
-                    <option value="exclude">排除</option>
-                  </select>
-
-                  <input
-                    type="text"
-                    value={item.value}
-                    onChange={(e) =>
-                      handleSearchItemChange(item.id, "value", e.target.value)
-                    }
-                    placeholder="输入搜索值..."
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-
-                  <button
-                    onClick={() => handleRemoveSearchItem(item.id)}
-                    className="p-2 text-red-500 hover:text-red-700"
-                    title="删除此条件"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* 新增：添加搜索条件按钮 */}
-          <div className="mt-3 flex justify-start">
-            <button
-              onClick={handleAddSearchItem}
-              className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition flex items-center"
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transition-all duration-200 flex items-center"
             >
               <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 mr-1"
+                className="w-4 h-4 mr-1"
                 fill="none"
-                viewBox="0 0 24 24"
                 stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
               >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
+                  strokeWidth="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                ></path>
               </svg>
-              添加搜索条件
-            </button>
+              刷新
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={handleLogout}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg shadow-md hover:bg-gray-700 transition-all duration-200 flex items-center"
+            >
+              <svg
+                className="w-4 h-4 mr-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                ></path>
+              </svg>
+              登出
+            </motion.button>
           </div>
         </div>
 
-        {/* 删除成功消息 */}
-        {deleteSuccess && (
-          <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
-            {deleteSuccess}
-          </div>
-        )}
+        {/* 搜索过滤器 */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.1 }}
+          className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-100 dark:border-gray-700"
+        >
+          <div className="flex flex-wrap md:flex-nowrap items-center gap-4">
+            {/* 搜索/排除选择和关键词输入 */}
+            <div className="flex h-11 items-center rounded-lg overflow-hidden shadow-sm border border-gray-200 dark:border-gray-600 w-full md:w-auto">
+              <div className="bg-gray-50 dark:bg-gray-700 px-3 py-2 h-full flex items-center">
+                <svg
+                  className="w-5 h-5 text-gray-500 dark:text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+                  ></path>
+                </svg>
+              </div>
+              <select
+                id="searchType"
+                name="searchType"
+                value={searchFilters.searchType}
+                onChange={handleSearchFilterChange}
+                className="h-full px-3 py-2 border-none focus:outline-none text-sm bg-white dark:bg-gray-600 rounded-r-lg"
+              >
+                <option value="">全部字段</option>
+                <option value="id">ID</option>
+                <option value="time">时间</option>
+                {logKeys.map((key) => (
+                  <option key={`search-${key}`} value={key}>
+                    {key}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* 删除错误消息 */}
-        {deleteError && (
-          <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-            {deleteError}
+            <div className="flex items-center flex-1 min-w-0">
+              <div className="flex h-11 w-full items-center border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden shadow-sm">
+                <div className="flex h-full items-center rounded-l-md overflow-hidden">
+                  <select
+                    id="searchMode"
+                    name="searchMode"
+                    value={searchFilters.searchMode}
+                    onChange={handleSearchFilterChange}
+                    className="h-full px-3 py-2 border-none focus:outline-none text-sm bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium"
+                  >
+                    <option value="include">搜索</option>
+                    <option value="exclude">排除</option>
+                  </select>
+                </div>
+                <div className="flex-1 relative h-full">
+                  <input
+                    type="text"
+                    id="keyword"
+                    name="keyword"
+                    value={searchFilters.keyword}
+                    onChange={handleSearchFilterChange}
+                    placeholder={
+                      searchFilters.searchMode === "include"
+                        ? "搜索关键词..."
+                        : "排除包含这些词的日志..."
+                    }
+                    className="h-full w-full px-4 py-2 border-none focus:outline-none focus:ring-blue-500 text-gray-700 dark:text-gray-200"
+                  />
+                  {searchFilters.keyword && (
+                    <button
+                      onClick={() =>
+                        setSearchFilters({ ...searchFilters, keyword: "" })
+                      }
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M6 18L18 6M6 6l12 12"
+                        ></path>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 日期范围选择 */}
+            <div className="flex items-center gap-3 flex-wrap md:flex-nowrap">
+              <div className="relative">
+                <div className="flex h-11 items-center border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden shadow-sm">
+                  <div className="bg-gray-50 dark:bg-gray-700 px-3 py-2 h-full flex items-center">
+                    <svg
+                      className="w-5 h-5 text-gray-500 dark:text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      ></path>
+                    </svg>
+                  </div>
+                  <input
+                    type="date"
+                    id="startDate"
+                    name="startDate"
+                    value={searchFilters.startDate}
+                    onChange={handleSearchFilterChange}
+                    className="h-full px-3 py-2 border-none focus:outline-none focus:ring-blue-500 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200"
+                    placeholder="开始日期"
+                  />
+                </div>
+                <span className="absolute -top-5 left-12 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  开始日期
+                </span>
+              </div>
+
+              <div className="relative">
+                <div className="flex h-11 items-center border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden shadow-sm">
+                  <div className="bg-gray-50 dark:bg-gray-700 px-3 py-2 h-full flex items-center">
+                    <svg
+                      className="w-5 h-5 text-gray-500 dark:text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      ></path>
+                    </svg>
+                  </div>
+                  <input
+                    type="date"
+                    id="endDate"
+                    name="endDate"
+                    value={searchFilters.endDate}
+                    onChange={handleSearchFilterChange}
+                    className="h-full px-3 py-2 border-none focus:outline-none focus:ring-blue-500 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200"
+                    placeholder="结束日期"
+                  />
+                </div>
+                <span className="absolute -top-5 left-12 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  结束日期
+                </span>
+              </div>
+
+              {/* 重置按钮 */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleResetFilters}
+                className="h-11 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-all duration-200 shadow-sm whitespace-nowrap flex items-center"
+              >
+                <svg
+                  className="w-4 h-4 mr-1"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  ></path>
+                </svg>
+                重置过滤器
+              </motion.button>
+            </div>
           </div>
-        )}
+
+          {/* 显示过滤结果统计 */}
+          <AnimatePresence>
+            {(searchFilters.keyword ||
+              searchFilters.startDate ||
+              searchFilters.endDate) && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-3 text-sm text-gray-600 dark:text-gray-400 flex items-center"
+              >
+                <svg
+                  className="w-4 h-4 mr-1 text-blue-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                  ></path>
+                </svg>
+                过滤结果:{" "}
+                <span className="font-semibold text-blue-600 dark:text-blue-400 mx-1">
+                  {filteredAndSortedLogs.length}
+                </span>{" "}
+                / {logs.length} 条日志
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+
+        {/* 状态消息区域 */}
+        <AnimatePresence>
+          {/* 删除成功消息 */}
+          {deleteSuccess && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="mb-4 bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-sm flex items-center"
+            >
+              <svg
+                className="w-5 h-5 mr-2 text-green-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M5 13l4 4L19 7"
+                ></path>
+              </svg>
+              {deleteSuccess}
+            </motion.div>
+          )}
+
+          {/* 删除错误消息 */}
+          {deleteError && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="mb-4 bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-sm flex items-center"
+            >
+              <svg
+                className="w-5 h-5 mr-2 text-red-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M6 18L18 6M6 6l12 12"
+                ></path>
+              </svg>
+              {deleteError}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-          </div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center py-16"
+          >
+            <svg
+              className="animate-spin h-12 w-12 text-blue-500 mb-4"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            <span className="text-lg text-gray-600 dark:text-gray-300">
+              加载日志数据中...
+            </span>
+          </motion.div>
         ) : error ? (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-            {error}
-          </div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-red-50 border-l-4 border-red-500 text-red-700 p-6 rounded-lg shadow-sm flex flex-col items-center justify-center"
+          >
+            <svg
+              className="w-12 h-12 text-red-500 mb-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
+            </svg>
+            <span className="text-lg font-medium">{error}</span>
+            <button
+              onClick={fetchLogsData}
+              className="mt-4 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-all duration-200 flex items-center"
+            >
+              <svg
+                className="w-4 h-4 mr-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                ></path>
+              </svg>
+              重试
+            </button>
+          </motion.div>
         ) : logs.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">暂无日志数据</div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-16 flex flex-col items-center"
+          >
+            <svg
+              className="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              ></path>
+            </svg>
+            <p className="text-xl text-gray-500 dark:text-gray-400 font-medium">
+              暂无日志数据
+            </p>
+            <p className="text-gray-400 dark:text-gray-500 mt-2">
+              当有新的日志产生时会自动显示在这里
+            </p>
+          </motion.div>
         ) : filteredAndSortedLogs.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            没有匹配的日志数据
-          </div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-16 flex flex-col items-center"
+          >
+            <svg
+              className="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+              ></path>
+            </svg>
+            <p className="text-xl text-gray-500 dark:text-gray-400 font-medium">
+              没有匹配的日志数据
+            </p>
+            <p className="text-gray-400 dark:text-gray-500 mt-2">
+              尝试调整过滤条件后再次搜索
+            </p>
+            <button
+              onClick={handleResetFilters}
+              className="mt-4 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg transition-all duration-200 flex items-center"
+            >
+              <svg
+                className="w-4 h-4 mr-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                ></path>
+              </svg>
+              重置过滤器
+            </button>
+          </motion.div>
         ) : (
-          <div className="overflow-x-auto">
-            <div className="max-h-[800px] overflow-y-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm"
+          >
+            <div className="max-h-[1000px] overflow-y-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0 z-10 shadow-sm">
                   <tr>
                     {/* 全选复选框 */}
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <input
-                        type="checkbox"
-                        checked={selectAll}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                        className="form-checkbox h-4 w-4 text-blue-600 transition duration-150 ease-in-out"
-                      />
+                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      <div className="flex items-center">
+                        <div className="relative">
+                          <input
+                            type="checkbox"
+                            checked={selectAll}
+                            onChange={(e) => handleSelectAll(e.target.checked)}
+                            className="h-5 w-5 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 transition-all duration-150"
+                          />
+                          <span className="absolute inset-0 bg-blue-500 opacity-0 group-checked:opacity-100 transition-opacity"></span>
+                        </div>
+                      </div>
                     </th>
                     <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      className="px-6 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors duration-150 cursor-pointer group"
                       onClick={() => handleSort("id")}
                     >
-                      ID {getSortIcon("id")}
+                      <div className="flex items-center">
+                        <span>ID</span>
+                        <span className="ml-1 transform transition-transform duration-200">
+                          {getSortIcon("id") || (
+                            <svg
+                              className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+                              ></path>
+                            </svg>
+                          )}
+                        </span>
+                      </div>
                     </th>
                     <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      className="px-6 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors duration-150 cursor-pointer group"
                       onClick={() => handleSort("created_at")}
                     >
-                      时间 {getSortIcon("created_at")}
+                      <div className="flex items-center">
+                        <span>时间</span>
+                        <span className="ml-1 transform transition-transform duration-200">
+                          {getSortIcon("created_at") || (
+                            <svg
+                              className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+                              ></path>
+                            </svg>
+                          )}
+                        </span>
+                      </div>
                     </th>
 
                     {/* 动态生成日志属性列 */}
                     {logKeys.map((key) => (
                       <th
                         key={key}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        className="px-6 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors duration-150 cursor-pointer group"
                         onClick={() => handleSort(key)}
                       >
-                        {key} {getSortIcon(key)}
+                        <div className="flex items-center">
+                          <span>{key}</span>
+                          <span className="ml-1 transform transition-transform duration-200">
+                            {getSortIcon(key) || (
+                              <svg
+                                className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+                                ></path>
+                              </svg>
+                            )}
+                          </span>
+                        </div>
                       </th>
                     ))}
 
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       操作
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {filteredAndSortedLogs.map((log) => (
-                    <tr
-                      key={log.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700"
-                    >
+                    <React.Fragment key={log.id}>
+                      <motion.tr
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2 }}
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 ${
+                          selectedLogs.includes(log.id)
+                            ? "bg-blue-50 dark:bg-blue-900/20"
+                            : ""
+                        } ${
+                          expandedLog === log.id
+                            ? "bg-gray-50 dark:bg-gray-700/50"
+                            : ""
+                        }`}
+                      >
                       {/* 单选复选框 */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <input
-                          type="checkbox"
-                          checked={selectedLogs.includes(log.id)}
-                          onChange={(e) =>
-                            handleSelectLog(log.id, e.target.checked)
-                          }
-                          className="form-checkbox h-4 w-4 text-blue-600 transition duration-150 ease-in-out"
-                        />
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedLogs.includes(log.id)}
+                            onChange={(e) =>
+                              handleSelectLog(log.id, e.target.checked)
+                            }
+                            className="h-5 w-5 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 transition-all duration-150"
+                          />
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300">
                         {log.id}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(log.created_at).toLocaleString()}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                        <div className="flex items-center">
+                          <svg
+                            className="w-4 h-4 mr-1.5 text-gray-400 dark:text-gray-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                            ></path>
+                          </svg>
+                          {new Date(log.created_at).toLocaleString()}
+                        </div>
                       </td>
 
                       {/* 动态显示日志属性值 */}
                       {logKeys.map((key) => (
                         <td
                           key={key}
-                          className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                          className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400"
                         >
                           {typeof log.data[key] === "object" &&
                           log.data[key] !== null ? (
-                            <span
-                              className="text-blue-500 cursor-pointer underline"
+                            <motion.span
+                              whileHover={{ scale: 1.05 }}
+                              className="text-blue-500 dark:text-blue-400 cursor-pointer flex items-center font-medium bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded text-xs"
                               onMouseEnter={(e) =>
                                 handleMouseEnter(log.data[key], e)
                               }
                               onMouseLeave={handleMouseLeave}
                             >
-                              [Object]
-                            </span>
+                              <svg
+                                className="w-3.5 h-3.5 mr-1"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                                ></path>
+                              </svg>
+                              对象数据
+                            </motion.span>
                           ) : (
-                            String(log.data[key] ?? "-")
+                            <span
+                              className={`${
+                                log.data[key]
+                                  ? ""
+                                  : "text-gray-400 dark:text-gray-600 italic"
+                              }`}
+                            >
+                              {String(log.data[key] ?? "-")}
+                            </span>
                           )}
                         </td>
                       ))}
 
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex space-x-2">
-                          <button
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex space-x-3">
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
                             onClick={() => toggleExpand(log.id)}
-                            className="text-blue-500 hover:text-blue-700"
+                            className={`px-2.5 py-1 rounded-md flex items-center text-xs font-medium ${
+                              expandedLog === log.id
+                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"
+                                : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                            } transition-colors duration-150`}
                           >
+                            <svg
+                              className={`w-3.5 h-3.5 mr-1 transition-transform duration-200 ${
+                                expandedLog === log.id ? "rotate-180" : ""
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M19 9l-7 7-7-7"
+                              ></path>
+                            </svg>
                             {expandedLog === log.id ? "折叠" : "展开"}
-                          </button>
-                          <button
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
                             onClick={() => handleDeleteClick(log.id)}
-                            className="text-red-500 hover:text-red-700 ml-3"
+                            className="px-2.5 py-1 rounded-md flex items-center text-xs font-medium bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors duration-150"
                           >
+                            <svg
+                              className="w-3.5 h-3.5 mr-1"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              ></path>
+                            </svg>
                             删除
-                          </button>
+                          </motion.button>
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
+
+                      {/* 行内展开的日志详情 */}
+                      <AnimatePresence>
+                        {expandedLog === log.id && (
+                          <motion.tr
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            <td colSpan={logKeys.length + 4} className="px-0 py-0 border-0">
+                              <motion.div 
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="mx-4 my-2 p-5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700"
+                              >
+                                <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 dark:border-gray-700">
+                                  <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 flex items-center">
+                                    <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                    日志详情 <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">ID: {log.id}</span>
+                                  </h3>
+                                  <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={() => setExpandedLog(null)}
+                                    className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150"
+                                  >
+                                    <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                  </motion.button>
+                                </div>
+                                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg overflow-hidden">
+                                  <pre className="whitespace-pre-wrap text-sm p-4 overflow-x-auto max-h-96 text-gray-700 dark:text-gray-300">
+                                    {JSON.stringify(log.data, null, 2)}
+                                  </pre>
+                                </div>
+                              </motion.div>
+                            </td>
+                          </motion.tr>
+                        )}
+                      </AnimatePresence>
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
-
-              {/* 展开的日志详情 */}
-              {expandedLog !== null && (
-                <div className="mt-2 p-4 border bg-gray-50 dark:bg-gray-700 rounded">
-                  <h3 className="text-sm font-medium mb-2">
-                    日志详情 (ID: {expandedLog})
-                  </h3>
-                  <pre className="whitespace-pre-wrap text-sm overflow-x-auto">
-                    {JSON.stringify(
-                      logs.find((log) => log.id === expandedLog)?.data,
-                      null,
-                      2
-                    )}
-                  </pre>
-                </div>
-              )}
-
-              {/* 悬浮显示对象信息 */}
-              {hoverInfo && (
-                <div
-                  ref={hoverCardRef}
-                  className="fixed bg-white dark:bg-gray-800 shadow-lg rounded-md p-4 border border-gray-200 dark:border-gray-700 z-50 max-w-md"
-                  style={{
-                    top: `${hoverInfo.y + 10}px`,
-                    left: `${hoverInfo.x + 10}px`,
-                  }}
-                  onMouseEnter={handleHoverCardMouseEnter}
-                  onMouseLeave={handleHoverCardMouseLeave}
-                >
-                  <pre className="whitespace-pre-wrap text-sm overflow-x-auto max-h-60">
-                    {JSON.stringify(hoverInfo.content, null, 2)}
-                  </pre>
-                </div>
-              )}
-
-              {/* 删除确认对话框 */}
-              {deleteConfirm && (
-                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4">
-                    <h3 className="text-lg font-semibold mb-4">确认删除</h3>
-                    <p className="mb-6">
-                      {Array.isArray(deleteConfirm.id) ? (
-                        <>
-                          您确定要删除选中的{" "}
-                          <span className="font-semibold">
-                            {deleteConfirm.id.length}
-                          </span>{" "}
-                          条日志吗？此操作无法撤销。
-                        </>
-                      ) : (
-                        <>
-                          您确定要删除ID为{" "}
-                          <span className="font-semibold">
-                            {deleteConfirm.id}
-                          </span>{" "}
-                          的日志吗？此操作无法撤销。
-                        </>
-                      )}
-                    </p>
-                    <div className="flex justify-end space-x-3">
-                      <button
-                        onClick={handleCancelDelete}
-                        disabled={deleteConfirm.isDeleting}
-                        className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-100 transition"
-                      >
-                        取消
-                      </button>
-                      <button
-                        onClick={handleConfirmDelete}
-                        disabled={deleteConfirm.isDeleting}
-                        className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition flex items-center"
-                      >
-                        {deleteConfirm.isDeleting ? (
-                          <>
-                            <svg
-                              className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                            >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                              ></circle>
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              ></path>
-                            </svg>
-                            处理中...
-                          </>
-                        ) : (
-                          "确认删除"
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
-          </div>
+          </motion.div>
         )}
-      </div>
+
+        {/* 悬浮显示对象信息 */}
+        <AnimatePresence>
+          {hoverInfo && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.15 }}
+              ref={hoverCardRef}
+              className="fixed bg-white dark:bg-gray-800 shadow-xl rounded-lg p-4 border border-gray-200 dark:border-gray-700 z-50 max-w-md"
+              style={{
+                top: `${hoverInfo.y + 10}px`,
+                left: `${hoverInfo.x + 10}px`,
+              }}
+              onMouseEnter={handleHoverCardMouseEnter}
+              onMouseLeave={handleHoverCardMouseLeave}
+            >
+              <div className="flex justify-between items-center mb-2 pb-1 border-b border-gray-100 dark:border-gray-700">
+                <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                  对象数据
+                </h4>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  点击外部关闭
+                </span>
+              </div>
+              <pre className="whitespace-pre-wrap text-sm overflow-x-auto max-h-60 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-md text-gray-700 dark:text-gray-300">
+                {JSON.stringify(hoverInfo.content, null, 2)}
+              </pre>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 删除确认对话框 */}
+        <AnimatePresence>
+          {deleteConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.2 }}
+                className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 max-w-md mx-4"
+              >
+                <div className="flex items-center mb-4 text-red-500">
+                  <svg
+                    className="w-8 h-8 mr-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    ></path>
+                  </svg>
+                  <h3 className="text-xl font-bold">确认删除</h3>
+                </div>
+
+                <p className="mb-6 text-gray-600 dark:text-gray-300">
+                  {Array.isArray(deleteConfirm.id) ? (
+                    <>
+                      您确定要删除选中的{" "}
+                      <span className="font-semibold text-red-500">
+                        {deleteConfirm.id.length}
+                      </span>{" "}
+                      条日志吗？此操作无法撤销。
+                    </>
+                  ) : (
+                    <>
+                      您确定要删除ID为{" "}
+                      <span className="font-semibold text-red-500">
+                        {deleteConfirm.id}
+                      </span>{" "}
+                      的日志吗？此操作无法撤销。
+                    </>
+                  )}
+                </p>
+
+                <div className="flex justify-end space-x-3">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleCancelDelete}
+                    disabled={deleteConfirm.isDeleting}
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200"
+                  >
+                    取消
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleConfirmDelete}
+                    disabled={deleteConfirm.isDeleting}
+                    className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200 flex items-center shadow-md"
+                  >
+                    {deleteConfirm.isDeleting ? (
+                      <>
+                        <svg
+                          className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
+                        </svg>
+                        处理中...
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-4 h-4 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          ></path>
+                        </svg>
+                        确认删除
+                      </>
+                    )}
+                  </motion.button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
     </div>
   );
 }
