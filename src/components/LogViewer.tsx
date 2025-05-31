@@ -509,15 +509,26 @@ export function LogViewer() {
       if (valueB === undefined) return -1;
 
       if (typeof valueA === "number" && typeof valueB === "number") {
+        // 修复数字排序：确保进行数值比较
         return sortConfig.direction === "asc"
-          ? valueA - valueB
-          : valueB - valueA;
+          ? Number(valueA) - Number(valueB)
+          : Number(valueB) - Number(valueA);
       } else {
-        const strA = String(valueA).toLowerCase();
-        const strB = String(valueB).toLowerCase();
-        return sortConfig.direction === "asc"
-          ? strA.localeCompare(strB)
-          : strB.localeCompare(strA);
+        // 尝试将字符串转换为数字进行比较
+        const numA = !isNaN(Number(valueA)) ? Number(valueA) : null;
+        const numB = !isNaN(Number(valueB)) ? Number(valueB) : null;
+        
+        if (numA !== null && numB !== null) {
+          // 如果两个值都可以转换为数字，进行数值比较
+          return sortConfig.direction === "asc" ? numA - numB : numB - numA;
+        } else {
+          // 否则进行字符串比较
+          const strA = String(valueA).toLowerCase();
+          const strB = String(valueB).toLowerCase();
+          return sortConfig.direction === "asc"
+            ? strA.localeCompare(strB)
+            : strB.localeCompare(strA);
+        }
       }
     }
   });
