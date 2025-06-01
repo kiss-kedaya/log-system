@@ -100,6 +100,10 @@ export function LogViewer() {
   const hoverCardRef = useRef<HTMLDivElement>(null);
   const [isMouseInHoverCard, setIsMouseInHoverCard] = useState(false);
 
+  // 新增：无限滚动相关的观察器引用
+  const loaderRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
   // 获取日志数据
   const fetchLogsData = async (serverParams?: LogQueryParams) => {
     try {
@@ -714,6 +718,33 @@ export function LogViewer() {
   useEffect(() => {
     fetchLogsData();
   }, []);
+
+  // 新增：设置无限滚动的IntersectionObserver
+  useEffect(() => {
+    // 仅在前端搜索模式下启用无限滚动
+    if (useServerSearch || !loaderRef.current) return;
+
+    // 创建新的IntersectionObserver
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        // 当观察的元素进入视图时
+        if (entries[0].isIntersecting && !loading) {
+          fetchAdditionalLogs();
+        }
+      },
+      { threshold: 0.1 } // 当目标元素有10%进入视口时触发
+    );
+
+    // 开始观察加载器元素
+    observerRef.current.observe(loaderRef.current);
+
+    // 清理函数
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [useServerSearch, loading]); // 依赖项包括搜索模式和加载状态
 
   // 登出功能
   const handleLogout = () => {
@@ -1945,39 +1976,206 @@ export function LogViewer() {
                 {useServerSearch ? "服务器端搜索" : "前端搜索"}
               </span>
 
-              {/* 补充加载按钮（仅在前端搜索模式下显示） */}
-              {!useServerSearch && (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => fetchAdditionalLogs()}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg shadow-sm hover:bg-blue-600 transition-colors duration-200 flex items-center"
-                  disabled={loading}
-                >
-                  {loading ? (
+              {/* 表格底部 */}
+              <div className="mt-4 border-t border-gray-100 dark:border-gray-700 pt-4 flex flex-col md:flex-row justify-between items-center">
+                {/* 分页信息提示 */}
+                {paginationInfo && (
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                    显示 {paginationInfo.start + 1} 到{" "}
+                    {Math.min(
+                      paginationInfo.end,
+                      paginationInfo.totalLogs
+                    )}{" "}
+                    条，共 {paginationInfo.totalLogs} 条记录
+                  </div>
+                )}
+
+                {/* 无限滚动加载器 - 放在表格底部 */}
+                {!useServerSearch && (
+                  <div
+                    ref={loaderRef}
+                    className="py-4 flex justify-center items-center w-full"
+                  >
+                    {loading && (
+                      <div className="flex items-center justify-center">
+                        <svg
+                          className="animate-spin h-5 w-5 mr-2 text-blue-500"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
+                        </svg>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          加载中...
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 页码选择器 - 仅当有分页信息且使用服务器端搜索时显示 */}
+                {paginationInfo &&
+                  paginationInfo.totalPages > 1 &&
+                  useServerSearch && (
+                    <div className="flex items-center space-x-1">
+                      {/* 首页按钮 */}
+                      <button
+                        onClick={() => handlePageChange(1)}
+                        disabled={paginationInfo.page === 1}
+                        className={`w-9 h-9 flex items-center justify-center rounded-md ${
+                          paginationInfo.page === 1
+                            ? "text-gray-400 cursor-not-allowed"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                          ></path>
+                        </svg>
+                      </button>
+
+                      {/* 上一页按钮 */}
+                      <button
+                        onClick={() => handlePageChange(paginationInfo.page - 1)}
+                        disabled={paginationInfo.page === 1}
+                        className={`w-9 h-9 flex items-center justify-center rounded-md ${
+                          paginationInfo.page === 1
+                            ? "text-gray-400 cursor-not-allowed"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M15 19l-7-7 7-7"
+                          ></path>
+                        </svg>
+                      </button>
+
+                      {/* 页码 */}
+                      {Array.from({
+                        length: Math.min(5, paginationInfo.totalPages),
+                      }).map((_, i) => {
+                        // 显示当前页及其前后共5页
+                        let pageNum = paginationInfo.page - 2 + i;
+
+                        // 调整显示的页码，确保始终显示5个页码（如果总页数>=5）
+                        if (pageNum < 1) pageNum = i + 1;
+                        if (pageNum > paginationInfo.totalPages)
+                          pageNum = paginationInfo.totalPages - (4 - i);
+
+                        // 确保页码在有效范围内
+                        if (pageNum < 1 || pageNum > paginationInfo.totalPages)
+                          return null;
+
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`w-9 h-9 flex items-center justify-center rounded-md ${
+                              pageNum === paginationInfo.page
+                                ? "bg-blue-500 text-white"
+                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+
+                      {/* 下一页按钮 */}
+                      <button
+                        onClick={() => handlePageChange(paginationInfo.page + 1)}
+                        disabled={paginationInfo.page === paginationInfo.totalPages}
+                        className={`w-9 h-9 flex items-center justify-center rounded-md ${
+                          paginationInfo.page === paginationInfo.totalPages
+                            ? "text-gray-400 cursor-not-allowed"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 5l7 7-7 7"
+                          ></path>
+                        </svg>
+                      </button>
+
+                      {/* 末页按钮 */}
+                      <button
+                        onClick={() => handlePageChange(paginationInfo.totalPages)}
+                        disabled={paginationInfo.page === paginationInfo.totalPages}
+                        className={`w-9 h-9 flex items-center justify-center rounded-md ${
+                          paginationInfo.page === paginationInfo.totalPages
+                            ? "text-gray-400 cursor-not-allowed"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                          ></path>
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+
+                {/* 服务端搜索按钮 */}
+                {useServerSearch && searchFilters.keyword && (
+                  <button
+                    onClick={() => handleServerSearch()}
+                    className="ml-2 px-3 py-1 bg-blue-500 text-white rounded-md text-sm flex items-center"
+                  >
                     <svg
-                      className="animate-spin h-4 w-4 mr-2"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                  ) : (
-                    <svg
-                      className="w-4 h-4 mr-2"
+                      className="w-4 h-4 mr-1"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -1987,37 +2185,13 @@ export function LogViewer() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth="2"
-                        d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                       ></path>
                     </svg>
-                  )}
-                  加载更多
-                </motion.button>
-              )}
-
-              {/* 服务端搜索按钮 */}
-              {useServerSearch && searchFilters.keyword && (
-                <button
-                  onClick={() => handleServerSearch()}
-                  className="ml-2 px-3 py-1 bg-blue-500 text-white rounded-md text-sm flex items-center"
-                >
-                  <svg
-                    className="w-4 h-4 mr-1"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    ></path>
-                  </svg>
-                  搜索
-                </button>
-              )}
+                    搜索
+                  </button>
+                )}
+              </div>
             </div>
           </motion.div>
         )}

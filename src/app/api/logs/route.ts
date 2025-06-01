@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
     // 构建搜索条件
     const searchConditions = [];
-    
+
     // 关键词搜索（字段指定或全局）
     if (keyword) {
       if (field) {
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
           searchConditions.push(sql`id::text ILIKE ${`%${keyword}%`}`);
         } else {
           // 搜索data中的特定字段
-          searchConditions.push(sql`data->>${ field } ILIKE ${`%${keyword}%`}`);
+          searchConditions.push(sql`data->>${field} ILIKE ${`%${keyword}%`}`);
         }
       } else {
         // 全文搜索
@@ -50,14 +50,14 @@ export async function GET(request: NextRequest) {
 
     // 日期范围搜索
     if (startDate) {
-      searchConditions.push(sql`created_at >= ${ new Date(startDate) }`);
+      searchConditions.push(sql`created_at >= ${new Date(startDate)}`);
     }
 
     if (endDate) {
       // 设置为当天的23:59:59
       const endDateTime = new Date(endDate);
       endDateTime.setHours(23, 59, 59, 999);
-      searchConditions.push(sql`created_at <= ${ endDateTime }`);
+      searchConditions.push(sql`created_at <= ${endDateTime}`);
     }
 
     // 构建WHERE子句
@@ -77,18 +77,18 @@ export async function GET(request: NextRequest) {
 
     // 获取总数量（用于分页）
     const countResult = await sql`
-      SELECT COUNT(*) as total FROM public.logs ${ whereClause }
+      SELECT COUNT(*) as total FROM public.logs ${whereClause}
     `;
-    
+
     const totalLogs = parseInt(countResult[0].total.toString() || "0", 10);
     const totalPages = Math.ceil(totalLogs / pageSize);
 
     // 获取分页数据
     const logs = await sql`
       SELECT * FROM public.logs 
-      ${ whereClause }
+      ${whereClause}
       ORDER BY created_at DESC
-      LIMIT ${ limit } OFFSET ${ offset }
+      LIMIT ${limit} OFFSET ${offset}
     `;
 
     // 加密日志数据
