@@ -17,81 +17,83 @@ export async function GET(request: NextRequest) {
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const pageSize = parseInt(url.searchParams.get("pageSize") || "20", 10);
     const start = parseInt(url.searchParams.get("start") || "0", 10);
-    const end = url.searchParams.get("end") ? parseInt(url.searchParams.get("end") || "0", 10) : null;
+    const end = url.searchParams.get("end")
+      ? parseInt(url.searchParams.get("end") || "0", 10)
+      : null;
     const keyword = url.searchParams.get("keyword") || "";
     const field = url.searchParams.get("field") || "";
     const startDate = url.searchParams.get("startDate") || "";
     const endDate = url.searchParams.get("endDate") || "";
-    
+
     // 计算偏移量，优先使用start/end参数
     const offset = start || (page - 1) * pageSize;
     const limit = end ? end - start : pageSize;
 
     // 构建搜索条件
-    const conditions: string[] = [];
-    const params: (string | number | boolean | Date)[] = [];
-    let conditionIndex = 1;
-
+    const searchConditions = [];
+    
     // 关键词搜索（字段指定或全局）
     if (keyword) {
       if (field) {
-        if (field === 'id') {
+        if (field === "id") {
           // 搜索ID字段
-          conditions.push(`id::text ILIKE $${conditionIndex}`);
-          params.push(`%${keyword}%`);
-          conditionIndex++;
+          searchConditions.push(sql`id::text ILIKE ${`%${keyword}%`}`);
         } else {
           // 搜索data中的特定字段
-          conditions.push(`data->>'${field}' ILIKE $${conditionIndex}`);
-          params.push(`%${keyword}%`);
-          conditionIndex++;
+          searchConditions.push(sql`data->>${ field } ILIKE ${`%${keyword}%`}`);
         }
       } else {
         // 全文搜索
-        conditions.push(`data::text ILIKE $${conditionIndex}`);
-        params.push(`%${keyword}%`);
-        conditionIndex++;
+        searchConditions.push(sql`data::text ILIKE ${`%${keyword}%`}`);
       }
     }
 
     // 日期范围搜索
     if (startDate) {
-      conditions.push(`created_at >= $${conditionIndex}`);
-      params.push(new Date(startDate));
-      conditionIndex++;
+      searchConditions.push(sql`created_at >= ${ new Date(startDate) }`);
     }
 
     if (endDate) {
-      conditions.push(`created_at <= $${conditionIndex}`);
       // 设置为当天的23:59:59
       const endDateTime = new Date(endDate);
       endDateTime.setHours(23, 59, 59, 999);
-      params.push(endDateTime);
-      conditionIndex++;
+      searchConditions.push(sql`created_at <= ${ endDateTime }`);
     }
 
-    // 构建完整查询条件
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    // 构建WHERE子句
+    let whereClause = sql``;
+    if (searchConditions.length > 0) {
+      // 手动构建AND条件
+      if (searchConditions.length === 1) {
+        whereClause = sql`WHERE ${searchConditions[0]}`;
+      } else {
+        let combinedCondition = searchConditions[0];
+        for (let i = 1; i < searchConditions.length; i++) {
+          combinedCondition = sql`${combinedCondition} AND ${searchConditions[i]}`;
+        }
+        whereClause = sql`WHERE ${combinedCondition}`;
+      }
+    }
 
     // 获取总数量（用于分页）
-    const countQuery = `SELECT COUNT(*) as total FROM public.logs ${whereClause}`;
-    const countResult = await sql.unsafe(countQuery, params);
+    const countResult = await sql`
+      SELECT COUNT(*) as total FROM public.logs ${ whereClause }
+    `;
     
-    const totalLogs = parseInt(countResult[0]?.total?.toString() || "0", 10);
+    const totalLogs = parseInt(countResult[0].total.toString() || "0", 10);
     const totalPages = Math.ceil(totalLogs / pageSize);
 
     // 获取分页数据
-    const logsQuery = `
+    const logs = await sql`
       SELECT * FROM public.logs 
-      ${whereClause}
+      ${ whereClause }
       ORDER BY created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
+      LIMIT ${ limit } OFFSET ${ offset }
     `;
-    const logs = await sql.unsafe(logsQuery, params);
 
     // 加密日志数据
     const encryptedData = hybridEncrypt({
-      success: true, 
+      success: true,
       data: logs,
       pagination: {
         page,
@@ -99,8 +101,8 @@ export async function GET(request: NextRequest) {
         totalLogs,
         totalPages,
         start,
-        end: start + (Array.isArray(logs) ? logs.length : 0)
-      }
+        end: start + (Array.isArray(logs) ? logs.length : 0),
+      },
     });
 
     // 返回二进制数据
