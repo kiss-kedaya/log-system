@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     // 构建搜索条件
     const conditions: string[] = [];
-    const params: any[] = [];
+    const params: (string | number | boolean | Date)[] = [];
     let conditionIndex = 1;
 
     // 关键词搜索（字段指定或全局）
