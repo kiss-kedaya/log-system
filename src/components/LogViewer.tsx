@@ -2,7 +2,13 @@
 
 import React from "react";
 import { useState, useEffect, useRef } from "react";
-import { fetchLogs, deleteLog, bulkDeleteLogs } from "@/lib/apiClient";
+import {
+  fetchLogs,
+  deleteLog,
+  bulkDeleteLogs,
+  LogQueryParams,
+  PaginationInfo,
+} from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -37,6 +43,13 @@ type SearchFilters = {
   endDate: string; // 结束日期
 };
 
+// 新增：分页控制类型
+type PaginationControls = {
+  currentPage: number;
+  pageSize: number;
+  pageSizeOptions: number[];
+};
+
 export function LogViewer() {
   const router = useRouter();
   const [logs, setLogs] = useState<Log[]>([]);
@@ -68,22 +81,70 @@ export function LogViewer() {
     searchMode: "include",
   });
 
+  // 新增：分页控制状态
+  const [pagination, setPagination] = useState<PaginationControls>({
+    currentPage: 1,
+    pageSize: 20,
+    pageSizeOptions: [10, 20, 50, 100, 200],
+  });
+
+  // 新增：分页信息状态
+  const [paginationInfo, setPaginationInfo] = useState<PaginationInfo | null>(
+    null
+  );
+
+  // 新增：是否使用前端或后端搜索
+  const [useServerSearch, setUseServerSearch] = useState(false);
+
   // 用于跟踪鼠标是否在悬浮框内
   const hoverCardRef = useRef<HTMLDivElement>(null);
   const [isMouseInHoverCard, setIsMouseInHoverCard] = useState(false);
 
   // 获取日志数据
-  const fetchLogsData = async () => {
+  const fetchLogsData = async (serverParams?: LogQueryParams) => {
     try {
       setLoading(true);
-      const response = await fetchLogs();
+
+      // 构建API查询参数
+      const params: LogQueryParams = serverParams || {
+        page: pagination.currentPage,
+        pageSize: pagination.pageSize,
+      };
+
+      // 如果需要使用服务器端搜索，添加搜索参数
+      if (useServerSearch && !serverParams) {
+        if (searchFilters.keyword) {
+          params.keyword = searchFilters.keyword;
+          params.field = searchFilters.searchType || "";
+        }
+        if (searchFilters.startDate) {
+          params.startDate = searchFilters.startDate;
+        }
+        if (searchFilters.endDate) {
+          params.endDate = searchFilters.endDate;
+        }
+      }
+
+      const response = await fetchLogs(params);
 
       if (!response.success) {
         throw new Error(response.error || "获取日志失败");
       }
 
-      const logsData = (response.data as Log[]) || [];
+      // 确保response.data是数组
+      const logsData = Array.isArray(response.data) ? response.data : [];
       setLogs(logsData);
+
+      // 更新分页信息
+      if (response.pagination) {
+        setPaginationInfo(response.pagination);
+        // 同步当前页码
+        setPagination((prev) => ({
+          ...prev,
+          currentPage: response.pagination?.page || 1,
+        }));
+      }
+
       // 重置选中的日志列表
       setSelectedLogs([]);
       setSelectAll(false);
@@ -102,6 +163,104 @@ export function LogViewer() {
     } catch (err) {
       console.error("获取日志失败:", err);
       setError("获取日志数据失败，请稍后再试");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 新增: 处理分页切换
+  const handlePageChange = (pageNumber: number) => {
+    setPagination((prev) => ({
+      ...prev,
+      currentPage: pageNumber,
+    }));
+    // 如果使用服务器端搜索，重新获取数据
+    if (useServerSearch) {
+      fetchLogsData({
+        page: pageNumber,
+        pageSize: pagination.pageSize,
+        keyword: searchFilters.keyword || undefined,
+        field: searchFilters.searchType || undefined,
+        startDate: searchFilters.startDate || undefined,
+        endDate: searchFilters.endDate || undefined,
+      });
+    }
+  };
+
+  // 新增: 处理每页条数变更
+  const handlePageSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newPageSize = parseInt(e.target.value, 10);
+    setPagination((prev) => ({
+      ...prev,
+      pageSize: newPageSize,
+      currentPage: 1, // 重置到第一页
+    }));
+
+    // 如果使用服务器端搜索，重新获取数据
+    if (useServerSearch) {
+      fetchLogsData({
+        page: 1,
+        pageSize: newPageSize,
+        keyword: searchFilters.keyword || undefined,
+        field: searchFilters.searchType || undefined,
+        startDate: searchFilters.startDate || undefined,
+        endDate: searchFilters.endDate || undefined,
+      });
+    }
+  };
+
+  // 新增：切换搜索模式（前端/后端）
+  const toggleSearchMode = () => {
+    setUseServerSearch((prev) => !prev);
+  };
+
+  // 新增：使用服务器端搜索
+  const handleServerSearch = () => {
+    fetchLogsData({
+      page: 1, // 重置到第一页
+      pageSize: pagination.pageSize,
+      keyword: searchFilters.keyword || undefined,
+      field: searchFilters.searchType || undefined,
+      startDate: searchFilters.startDate || undefined,
+      endDate: searchFilters.endDate || undefined,
+    });
+  };
+
+  // 新增：补充获取日志
+  const fetchAdditionalLogs = async () => {
+    if (!paginationInfo) return;
+
+    try {
+      setLoading(true);
+
+      // 获取当前列表之后的日志
+      const response = await fetchLogs({
+        start: paginationInfo.end,
+        end: paginationInfo.end + pagination.pageSize,
+        keyword: searchFilters.keyword || undefined,
+        field: searchFilters.searchType || undefined,
+        startDate: searchFilters.startDate || undefined,
+        endDate: searchFilters.endDate || undefined,
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || "获取补充日志失败");
+      }
+
+      const additionalLogs = (response.data as Log[]) || [];
+
+      // 合并日志
+      setLogs((prev) => [...prev, ...additionalLogs]);
+
+      // 更新分页信息
+      if (response.pagination) {
+        setPaginationInfo(response.pagination);
+      }
+
+      return additionalLogs.length;
+    } catch (err) {
+      console.error("获取补充日志失败:", err);
+      return 0;
     } finally {
       setLoading(false);
     }
@@ -336,7 +495,7 @@ export function LogViewer() {
     );
   };
 
-  // 处理搜索过滤器变化
+  // 修改 handleSearchFilterChange 函数
   const handleSearchFilterChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
@@ -345,9 +504,12 @@ export function LogViewer() {
       ...prev,
       [name]: value,
     }));
+
+    // 如果是服务端搜索，不要在这里立即触发搜索
+    // 用户需要点击"搜索"按钮来触发
   };
 
-  // 新增：处理搜索过滤器重置
+  // 修改 handleResetFilters 函数
   const handleResetFilters = () => {
     setSearchFilters({
       keyword: "",
@@ -356,10 +518,22 @@ export function LogViewer() {
       searchType: "",
       searchMode: "include",
     });
+
+    // 如果使用服务器端搜索，重置后触发搜索
+    if (useServerSearch) {
+      fetchLogsData({
+        page: 1,
+        pageSize: pagination.pageSize,
+      });
+    }
   };
 
   // 过滤日志函数
   const filterLogs = (logs: Log[]) => {
+    if (!Array.isArray(logs) || logs.length === 0) {
+      return [];
+    }
+    
     return logs.filter((log) => {
       // 关键词过滤
       if (searchFilters.keyword) {
@@ -485,7 +659,7 @@ export function LogViewer() {
   };
 
   // 排序日志
-  const sortedLogs = [...logs].sort((a, b) => {
+  const sortedLogs = Array.isArray(logs) ? [...logs].sort((a, b) => {
     if (sortConfig.key === "id" || sortConfig.key === "created_at") {
       // 处理内置属性排序
       const valueA =
@@ -517,7 +691,7 @@ export function LogViewer() {
         // 尝试将字符串转换为数字进行比较
         const numA = !isNaN(Number(valueA)) ? Number(valueA) : null;
         const numB = !isNaN(Number(valueB)) ? Number(valueB) : null;
-        
+
         if (numA !== null && numB !== null) {
           // 如果两个值都可以转换为数字，进行数值比较
           return sortConfig.direction === "asc" ? numA - numB : numB - numA;
@@ -531,7 +705,7 @@ export function LogViewer() {
         }
       }
     }
-  });
+  }) : [];
 
   // 新增：过滤并排序日志
   const filteredAndSortedLogs = filterLogs(sortedLogs);
@@ -598,7 +772,7 @@ export function LogViewer() {
             )}
             <motion.button
               whileTap={{ scale: 0.95 }}
-              onClick={fetchLogsData}
+              onClick={() => fetchLogsData()}
               className="px-4 py-2 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transition-all duration-200 flex items-center"
             >
               <svg
@@ -976,7 +1150,7 @@ export function LogViewer() {
             </svg>
             <span className="text-lg font-medium">{error}</span>
             <button
-              onClick={fetchLogsData}
+              onClick={() => fetchLogsData()}
               className="mt-4 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-all duration-200 flex items-center"
             >
               <svg
@@ -1201,57 +1375,123 @@ export function LogViewer() {
                             : ""
                         }`}
                       >
-                      {/* 单选复选框 */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={selectedLogs.includes(log.id)}
-                            onChange={(e) =>
-                              handleSelectLog(log.id, e.target.checked)
-                            }
-                            className="h-5 w-5 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 transition-all duration-150"
-                          />
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {log.id}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                        <div className="flex items-center">
-                          <svg
-                            className="w-4 h-4 mr-1.5 text-gray-400 dark:text-gray-500"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth="2"
-                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                            ></path>
-                          </svg>
-                          {new Date(log.created_at).toLocaleString()}
-                        </div>
-                      </td>
-
-                      {/* 动态显示日志属性值 */}
-                      {logKeys.map((key) => (
-                        <td
-                          key={key}
-                          className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400"
-                        >
-                          {typeof log.data[key] === "object" &&
-                          log.data[key] !== null ? (
-                            <motion.span
-                              whileHover={{ scale: 1.05 }}
-                              className="text-blue-500 dark:text-blue-400 cursor-pointer flex items-center font-medium bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded text-xs"
-                              onMouseEnter={(e) =>
-                                handleMouseEnter(log.data[key], e)
+                        {/* 单选复选框 */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedLogs.includes(log.id)}
+                              onChange={(e) =>
+                                handleSelectLog(log.id, e.target.checked)
                               }
-                              onMouseLeave={handleMouseLeave}
+                              className="h-5 w-5 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 transition-all duration-150"
+                            />
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {log.id}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                          <div className="flex items-center">
+                            <svg
+                              className="w-4 h-4 mr-1.5 text-gray-400 dark:text-gray-500"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                              ></path>
+                            </svg>
+                            {new Date(log.created_at).toLocaleString()}
+                          </div>
+                        </td>
+
+                        {/* 动态显示日志属性值 */}
+                        {logKeys.map((key) => (
+                          <td
+                            key={key}
+                            className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400"
+                          >
+                            {typeof log.data[key] === "object" &&
+                            log.data[key] !== null ? (
+                              <motion.span
+                                whileHover={{ scale: 1.05 }}
+                                className="text-blue-500 dark:text-blue-400 cursor-pointer flex items-center font-medium bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded text-xs"
+                                onMouseEnter={(e) =>
+                                  handleMouseEnter(log.data[key], e)
+                                }
+                                onMouseLeave={handleMouseLeave}
+                              >
+                                <svg
+                                  className="w-3.5 h-3.5 mr-1"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth="2"
+                                    d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                                  ></path>
+                                </svg>
+                                对象数据
+                              </motion.span>
+                            ) : (
+                              <span
+                                className={`${
+                                  log.data[key]
+                                    ? ""
+                                    : "text-gray-400 dark:text-gray-600 italic"
+                                }`}
+                              >
+                                {String(log.data[key] ?? "-")}
+                              </span>
+                            )}
+                          </td>
+                        ))}
+
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <div className="flex space-x-3">
+                            <motion.button
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => toggleExpand(log.id)}
+                              className={`px-2.5 py-1 rounded-md flex items-center text-xs font-medium ${
+                                expandedLog === log.id
+                                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"
+                                  : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                              } transition-colors duration-150`}
+                            >
+                              <svg
+                                className={`w-3.5 h-3.5 mr-1 transition-transform duration-200 ${
+                                  expandedLog === log.id ? "rotate-180" : ""
+                                }`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M19 9l-7 7-7-7"
+                                ></path>
+                              </svg>
+                              {expandedLog === log.id ? "折叠" : "展开"}
+                            </motion.button>
+                            <motion.button
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => handleDeleteClick(log.id)}
+                              className="px-2.5 py-1 rounded-md flex items-center text-xs font-medium bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors duration-150"
                             >
                               <svg
                                 className="w-3.5 h-3.5 mr-1"
@@ -1264,92 +1504,29 @@ export function LogViewer() {
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
                                   strokeWidth="2"
-                                  d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                                 ></path>
                               </svg>
-                              对象数据
-                            </motion.span>
-                          ) : (
-                            <span
-                              className={`${
-                                log.data[key]
-                                  ? ""
-                                  : "text-gray-400 dark:text-gray-600 italic"
-                              }`}
-                            >
-                              {String(log.data[key] ?? "-")}
-                            </span>
-                          )}
+                              删除
+                            </motion.button>
+                          </div>
                         </td>
-                      ))}
-
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex space-x-3">
-                          <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => toggleExpand(log.id)}
-                            className={`px-2.5 py-1 rounded-md flex items-center text-xs font-medium ${
-                              expandedLog === log.id
-                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"
-                                : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                            } transition-colors duration-150`}
-                          >
-                            <svg
-                              className={`w-3.5 h-3.5 mr-1 transition-transform duration-200 ${
-                                expandedLog === log.id ? "rotate-180" : ""
-                              }`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              xmlns="http://www.w3.org/2000/svg"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M19 9l-7 7-7-7"
-                              ></path>
-                            </svg>
-                            {expandedLog === log.id ? "折叠" : "展开"}
-                          </motion.button>
-                          <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => handleDeleteClick(log.id)}
-                            className="px-2.5 py-1 rounded-md flex items-center text-xs font-medium bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors duration-150"
-                          >
-                            <svg
-                              className="w-3.5 h-3.5 mr-1"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              xmlns="http://www.w3.org/2000/svg"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                              ></path>
-                            </svg>
-                            删除
-                          </motion.button>
-                        </div>
-                      </td>
-                    </motion.tr>
+                      </motion.tr>
 
                       {/* 行内展开的日志详情 */}
                       <AnimatePresence>
                         {expandedLog === log.id && (
                           <motion.tr
                             initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
+                            animate={{ opacity: 1, height: "auto" }}
                             exit={{ opacity: 0, height: 0 }}
                             transition={{ duration: 0.3 }}
                           >
-                            <td colSpan={logKeys.length + 4} className="px-0 py-0 border-0">
-                              <motion.div 
+                            <td
+                              colSpan={logKeys.length + 4}
+                              className="px-0 py-0 border-0"
+                            >
+                              <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
@@ -1357,10 +1534,24 @@ export function LogViewer() {
                               >
                                 <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100 dark:border-gray-700">
                                   <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 flex items-center">
-                                    <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    <svg
+                                      className="w-5 h-5 mr-2 text-blue-500"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth="2"
+                                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                      ></path>
                                     </svg>
-                                    日志详情 <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">ID: {log.id}</span>
+                                    日志详情{" "}
+                                    <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">
+                                      ID: {log.id}
+                                    </span>
                                   </h3>
                                   <motion.button
                                     whileHover={{ scale: 1.05 }}
@@ -1368,8 +1559,19 @@ export function LogViewer() {
                                     onClick={() => setExpandedLog(null)}
                                     className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150"
                                   >
-                                    <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    <svg
+                                      className="w-5 h-5 text-gray-500 dark:text-gray-400"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth="2"
+                                        d="M6 18L18 6M6 6l12 12"
+                                      ></path>
                                     </svg>
                                   </motion.button>
                                 </div>
@@ -1543,6 +1745,282 @@ export function LogViewer() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* 在表格底部添加分页控件 */}
+        {!loading && !error && logs.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col md:flex-row justify-between items-center mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-md p-4 border border-gray-100 dark:border-gray-700"
+          >
+            {/* 每页条数选择 */}
+            <div className="flex items-center space-x-2 mb-4 md:mb-0">
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                每页显示:
+              </span>
+              <select
+                value={pagination.pageSize}
+                onChange={handlePageSizeChange}
+                className="h-9 px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {pagination.pageSizeOptions.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 分页信息 */}
+            <div className="text-sm text-gray-600 dark:text-gray-400 mb-4 md:mb-0">
+              {paginationInfo ? (
+                <>
+                  显示 {paginationInfo.start + 1} - {paginationInfo.end} 条，共{" "}
+                  {paginationInfo.totalLogs} 条记录
+                </>
+              ) : (
+                <>显示 {logs.length} 条记录</>
+              )}
+            </div>
+
+            {/* 分页按钮 */}
+            {paginationInfo &&
+              paginationInfo.totalPages > 1 &&
+              useServerSearch && (
+                <div className="flex items-center space-x-1">
+                  {/* 首页按钮 */}
+                  <button
+                    onClick={() => handlePageChange(1)}
+                    disabled={paginationInfo.page === 1}
+                    className={`w-9 h-9 flex items-center justify-center rounded-md ${
+                      paginationInfo.page === 1
+                        ? "text-gray-400 cursor-not-allowed"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                      ></path>
+                    </svg>
+                  </button>
+
+                  {/* 上一页按钮 */}
+                  <button
+                    onClick={() => handlePageChange(paginationInfo.page - 1)}
+                    disabled={paginationInfo.page === 1}
+                    className={`w-9 h-9 flex items-center justify-center rounded-md ${
+                      paginationInfo.page === 1
+                        ? "text-gray-400 cursor-not-allowed"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M15 19l-7-7 7-7"
+                      ></path>
+                    </svg>
+                  </button>
+
+                  {/* 页码 */}
+                  {Array.from({
+                    length: Math.min(5, paginationInfo.totalPages),
+                  }).map((_, i) => {
+                    // 显示当前页及其前后共5页
+                    let pageNum = paginationInfo.page - 2 + i;
+
+                    // 调整显示的页码，确保始终显示5个页码（如果总页数>=5）
+                    if (pageNum < 1) pageNum = i + 1;
+                    if (pageNum > paginationInfo.totalPages)
+                      pageNum = paginationInfo.totalPages - (4 - i);
+
+                    // 确保页码在有效范围内
+                    if (pageNum < 1 || pageNum > paginationInfo.totalPages)
+                      return null;
+
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`w-9 h-9 flex items-center justify-center rounded-md ${
+                          pageNum === paginationInfo.page
+                            ? "bg-blue-500 text-white"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+
+                  {/* 下一页按钮 */}
+                  <button
+                    onClick={() => handlePageChange(paginationInfo.page + 1)}
+                    disabled={paginationInfo.page === paginationInfo.totalPages}
+                    className={`w-9 h-9 flex items-center justify-center rounded-md ${
+                      paginationInfo.page === paginationInfo.totalPages
+                        ? "text-gray-400 cursor-not-allowed"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 5l7 7-7 7"
+                      ></path>
+                    </svg>
+                  </button>
+
+                  {/* 末页按钮 */}
+                  <button
+                    onClick={() => handlePageChange(paginationInfo.totalPages)}
+                    disabled={paginationInfo.page === paginationInfo.totalPages}
+                    className={`w-9 h-9 flex items-center justify-center rounded-md ${
+                      paginationInfo.page === paginationInfo.totalPages
+                        ? "text-gray-400 cursor-not-allowed"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                      ></path>
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+            {/* 搜索模式切换 */}
+            <div className="flex items-center mt-4 md:mt-0 md:ml-4">
+              <button
+                onClick={toggleSearchMode}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  useServerSearch
+                    ? "bg-blue-500"
+                    : "bg-gray-300 dark:bg-gray-600"
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform ${
+                    useServerSearch ? "translate-x-5" : "translate-x-1"
+                  }`}
+                ></span>
+              </button>
+              <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">
+                {useServerSearch ? "服务器端搜索" : "前端搜索"}
+              </span>
+
+              {/* 补充加载按钮（仅在前端搜索模式下显示） */}
+              {!useServerSearch && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => fetchAdditionalLogs()}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg shadow-sm hover:bg-blue-600 transition-colors duration-200 flex items-center"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <svg
+                      className="animate-spin h-4 w-4 mr-2"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-4 h-4 mr-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                      ></path>
+                    </svg>
+                  )}
+                  加载更多
+                </motion.button>
+              )}
+
+              {/* 服务端搜索按钮 */}
+              {useServerSearch && searchFilters.keyword && (
+                <button
+                  onClick={() => handleServerSearch()}
+                  className="ml-2 px-3 py-1 bg-blue-500 text-white rounded-md text-sm flex items-center"
+                >
+                  <svg
+                    className="w-4 h-4 mr-1"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    ></path>
+                  </svg>
+                  搜索
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
       </motion.div>
     </div>
   );

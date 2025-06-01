@@ -9,16 +9,99 @@ initDatabase().catch(console.error);
 // 确保RSA密钥已生成
 generateRSAKeyPair();
 
-// GET 请求处理程序 - 获取所有日志
-export async function GET() {
+// GET 请求处理程序 - 获取日志（支持分页和搜索）
+export async function GET(request: NextRequest) {
   try {
-    // 执行查询获取所有日志，按创建时间降序排列
-    const logs = await sql`
-      SELECT * FROM public.logs ORDER BY created_at DESC
+    // 获取URL参数
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get("page") || "1", 10);
+    const pageSize = parseInt(url.searchParams.get("pageSize") || "20", 10);
+    const start = parseInt(url.searchParams.get("start") || "0", 10);
+    const end = url.searchParams.get("end") ? parseInt(url.searchParams.get("end") || "0", 10) : null;
+    const keyword = url.searchParams.get("keyword") || "";
+    const field = url.searchParams.get("field") || "";
+    const startDate = url.searchParams.get("startDate") || "";
+    const endDate = url.searchParams.get("endDate") || "";
+    
+    // 计算偏移量，优先使用start/end参数
+    const offset = start || (page - 1) * pageSize;
+    const limit = end ? end - start : pageSize;
+
+    // 构建搜索条件
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let conditionIndex = 1;
+
+    // 关键词搜索（字段指定或全局）
+    if (keyword) {
+      if (field) {
+        if (field === 'id') {
+          // 搜索ID字段
+          conditions.push(`id::text ILIKE $${conditionIndex}`);
+          params.push(`%${keyword}%`);
+          conditionIndex++;
+        } else {
+          // 搜索data中的特定字段
+          conditions.push(`data->>'${field}' ILIKE $${conditionIndex}`);
+          params.push(`%${keyword}%`);
+          conditionIndex++;
+        }
+      } else {
+        // 全文搜索
+        conditions.push(`data::text ILIKE $${conditionIndex}`);
+        params.push(`%${keyword}%`);
+        conditionIndex++;
+      }
+    }
+
+    // 日期范围搜索
+    if (startDate) {
+      conditions.push(`created_at >= $${conditionIndex}`);
+      params.push(new Date(startDate));
+      conditionIndex++;
+    }
+
+    if (endDate) {
+      conditions.push(`created_at <= $${conditionIndex}`);
+      // 设置为当天的23:59:59
+      const endDateTime = new Date(endDate);
+      endDateTime.setHours(23, 59, 59, 999);
+      params.push(endDateTime);
+      conditionIndex++;
+    }
+
+    // 构建完整查询条件
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // 获取总数量（用于分页）
+    const countQuery = `SELECT COUNT(*) as total FROM public.logs ${whereClause}`;
+    const countResult = await sql.unsafe(countQuery, params);
+    
+    const totalLogs = parseInt(countResult[0]?.total?.toString() || "0", 10);
+    const totalPages = Math.ceil(totalLogs / pageSize);
+
+    // 获取分页数据
+    const logsQuery = `
+      SELECT * FROM public.logs 
+      ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
     `;
+    const logs = await sql.unsafe(logsQuery, params);
 
     // 加密日志数据
-    const encryptedData = hybridEncrypt({ success: true, data: logs });
+    const encryptedData = hybridEncrypt({
+      success: true, 
+      data: logs,
+      pagination: {
+        page,
+        pageSize,
+        totalLogs,
+        totalPages,
+        start,
+        end: start + (Array.isArray(logs) ? logs.length : 0)
+      }
+    });
 
     // 返回二进制数据
     return new Response(encryptedData, {

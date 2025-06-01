@@ -5,6 +5,7 @@ type ApiResponse<T = unknown> = {
   data?: T;
   error?: string;
   message?: string;
+  pagination?: PaginationInfo;
 };
 
 // 日志类型定义
@@ -12,6 +13,28 @@ export type Log = {
   id: number;
   data: Record<string, unknown>;
   created_at: string;
+};
+
+// 分页信息类型
+export type PaginationInfo = {
+  page: number;
+  pageSize: number;
+  totalLogs: number;
+  totalPages: number;
+  start: number;
+  end: number;
+};
+
+// 日志查询参数类型
+export type LogQueryParams = {
+  page?: number;
+  pageSize?: number;
+  start?: number;
+  end?: number;
+  keyword?: string;
+  field?: string;
+  startDate?: string;
+  endDate?: string;
 };
 
 /**
@@ -94,10 +117,31 @@ export async function apiRequest<T = unknown>(
 }
 
 /**
- * 获取所有日志
+ * 构建带查询参数的URL
  */
-export async function fetchLogs() {
-  return apiRequest<Log[]>("/api/logs");
+export function buildUrl(
+  baseUrl: string,
+  params?: Record<string, string | number | boolean | undefined>
+): string {
+  if (!params) return baseUrl;
+
+  const url = new URL(baseUrl, window.location.origin);
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.append(key, String(value));
+    }
+  });
+
+  return url.pathname + url.search;
+}
+
+/**
+ * 获取日志（支持分页和搜索）
+ */
+export async function fetchLogs(params?: LogQueryParams) {
+  const url = buildUrl("/api/logs", params);
+  return apiRequest<Log[]>(url);
 }
 
 /**
