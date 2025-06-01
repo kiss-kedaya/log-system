@@ -247,10 +247,10 @@ export function LogViewer() {
         throw new Error(response.error || "获取补充日志失败");
       }
 
-      const additionalLogs = (response.data as Log[]) || [];
+      const additionalLogs = Array.isArray(response.data) ? response.data : [];
 
       // 合并日志
-      setLogs((prev) => [...prev, ...additionalLogs]);
+      setLogs((prev) => Array.isArray(prev) ? [...prev, ...additionalLogs] : additionalLogs);
 
       // 更新分页信息
       if (response.pagination) {
