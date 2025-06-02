@@ -1,7 +1,23 @@
+/**
+ * LogViewer 组件 - 优化版本
+ *
+ * 主要优化点：
+ * 1. 使用 useMemo 和 useCallback 优化性能，避免不必要的重新渲染
+ * 2. 将复杂UI组件抽取为独立的组件（HoverCard, DeleteConfirmDialog）
+ * 3. 优化状态管理，使用函数式更新
+ * 4. 优化事件处理函数，减少重复代码
+ * 5. 优化无限滚动实现
+ *
+ * 进一步优化建议：
+ * - 将组件拆分为更小的子组件
+ * - 使用 Context API 管理全局状态
+ * - 将数据获取逻辑抽取到自定义 Hook 中
+ */
+
 "use client";
 
 import React from "react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   fetchLogs,
   deleteLog,
@@ -49,6 +65,180 @@ type PaginationControls = {
   pageSize: number;
   pageSizeOptions: number[];
 };
+
+// 提取HoverCard组件
+const HoverCard = React.memo(
+  React.forwardRef<
+    HTMLDivElement,
+    {
+      hoverInfo: HoverInfo;
+      onMouseEnter: () => void;
+      onMouseLeave: () => void;
+    }
+  >(({ hoverInfo, onMouseEnter, onMouseLeave }, ref) => {
+    if (!hoverInfo) return null;
+
+    return (
+      <motion.div
+        ref={ref}
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.15 }}
+        className="fixed bg-white dark:bg-gray-800 shadow-xl rounded-lg p-4 border border-gray-200 dark:border-gray-700 z-50 max-w-md"
+        style={{
+          top: `${hoverInfo.y + 10}px`,
+          left: `${hoverInfo.x + 10}px`,
+        }}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
+        <div className="flex justify-between items-center mb-2 pb-1 border-b border-gray-100 dark:border-gray-700">
+          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+            对象数据
+          </h4>
+          <span className="text-xs text-gray-400 dark:text-gray-500">
+            点击外部关闭
+          </span>
+        </div>
+        <pre className="whitespace-pre-wrap text-sm overflow-x-auto max-h-60 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-md text-gray-700 dark:text-gray-300">
+          {JSON.stringify(hoverInfo.content, null, 2)}
+        </pre>
+      </motion.div>
+    );
+  })
+);
+
+HoverCard.displayName = "HoverCard";
+
+// 提取删除确认对话框组件
+const DeleteConfirmDialog = React.memo<{
+  deleteConfirm: DeleteConfirmInfo;
+  onCancel: () => void;
+  onConfirm: () => void;
+}>(({ deleteConfirm, onCancel, onConfirm }) => {
+  if (!deleteConfirm) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.2 }}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 max-w-md mx-4"
+      >
+        <div className="flex items-center mb-4 text-red-500">
+          <svg
+            className="w-8 h-8 mr-3"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            ></path>
+          </svg>
+          <h3 className="text-xl font-bold">确认删除</h3>
+        </div>
+
+        <p className="mb-6 text-gray-600 dark:text-gray-300">
+          {Array.isArray(deleteConfirm.id) ? (
+            <>
+              您确定要删除选中的{" "}
+              <span className="font-semibold text-red-500">
+                {deleteConfirm.id.length}
+              </span>{" "}
+              条日志吗？此操作无法撤销。
+            </>
+          ) : (
+            <>
+              您确定要删除ID为{" "}
+              <span className="font-semibold text-red-500">
+                {deleteConfirm.id}
+              </span>{" "}
+              的日志吗？此操作无法撤销。
+            </>
+          )}
+        </p>
+
+        <div className="flex justify-end space-x-3">
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onCancel}
+            disabled={deleteConfirm.isDeleting}
+            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200"
+          >
+            取消
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onConfirm}
+            disabled={deleteConfirm.isDeleting}
+            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200 flex items-center shadow-md"
+          >
+            {deleteConfirm.isDeleting ? (
+              <>
+                <svg
+                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                处理中...
+              </>
+            ) : (
+              <>
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  ></path>
+                </svg>
+                确认删除
+              </>
+            )}
+          </motion.button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+});
+
+DeleteConfirmDialog.displayName = "DeleteConfirmDialog";
 
 export function LogViewer() {
   const router = useRouter();
@@ -102,21 +292,149 @@ export function LogViewer() {
 
   // 新增：无限滚动相关的观察器引用
   const loaderRef = useRef<HTMLDivElement>(null);
-  const observerRef = useRef<IntersectionObserver | null>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null); // 引用表格容器
+
+  // 新增一个状态控制无限加载状态
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // 新增一个状态来标记是否已加载全部数据
+  const [hasMoreData, setHasMoreData] = useState(true);
 
   // 获取日志数据
-  const fetchLogsData = async (serverParams?: LogQueryParams) => {
-    try {
-      setLoading(true);
+  const fetchLogsData = useCallback(
+    async (serverParams?: LogQueryParams) => {
+      try {
+        setLoading(true);
 
-      // 构建API查询参数
-      const params: LogQueryParams = serverParams || {
-        page: pagination.currentPage,
-        pageSize: pagination.pageSize,
+        // 构建API查询参数
+        const params: LogQueryParams = serverParams || {
+          page: pagination.currentPage,
+          pageSize: pagination.pageSize,
+        };
+
+        // 如果需要使用服务器端搜索，添加搜索参数
+        if (useServerSearch && !serverParams) {
+          if (searchFilters.keyword) {
+            params.keyword = searchFilters.keyword;
+            params.field = searchFilters.searchType || "";
+          }
+          if (searchFilters.startDate) {
+            params.startDate = searchFilters.startDate;
+          }
+          if (searchFilters.endDate) {
+            params.endDate = searchFilters.endDate;
+          }
+        }
+
+        const response = await fetchLogs(params);
+
+        if (!response.success) {
+          throw new Error(response.error || "获取日志失败");
+        }
+
+        // 确保response.data是数组
+        const logsData = Array.isArray(response.data) ? response.data : [];
+        setLogs(logsData);
+
+        // 更新分页信息
+        if (response.pagination) {
+          setPaginationInfo(response.pagination);
+          // 同步当前页码
+          setPagination((prev) => ({
+            ...prev,
+            currentPage: response.pagination?.page || 1,
+          }));
+        }
+
+        // 重置选中的日志列表
+        setSelectedLogs([]);
+        setSelectAll(false);
+
+        // 提取所有日志中的键
+        if (logsData.length > 0) {
+          // 收集所有日志中的所有键
+          const allKeys = new Set<string>();
+          logsData.forEach((log: Log) => {
+            Object.keys(log.data).forEach((key) => allKeys.add(key));
+          });
+          setLogKeys(Array.from(allKeys));
+        }
+
+        setError(null);
+      } catch (err) {
+        console.error("获取日志失败:", err);
+        setError("获取日志数据失败，请稍后再试");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      pagination.currentPage,
+      pagination.pageSize,
+      searchFilters,
+      useServerSearch,
+    ]
+  );
+
+  // 新增: 处理每页条数变更
+  const handlePageSizeChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const newPageSize = parseInt(e.target.value, 10);
+      setPagination((prev) => ({
+        ...prev,
+        pageSize: newPageSize,
+        currentPage: 1, // 重置到第一页
+      }));
+
+      // 如果使用服务器端搜索，重新获取数据
+      if (useServerSearch) {
+        fetchLogsData({
+          page: 1,
+          pageSize: newPageSize,
+          keyword: searchFilters.keyword || undefined,
+          field: searchFilters.searchType || undefined,
+          startDate: searchFilters.startDate || undefined,
+          endDate: searchFilters.endDate || undefined,
+        });
+      }
+    },
+    [useServerSearch, searchFilters, fetchLogsData]
+  );
+
+  // 新增：切换搜索模式（前端/后端）
+  const toggleSearchMode = useCallback(() => {
+    setUseServerSearch((prev) => !prev);
+  }, []);
+
+  // 新增：使用服务器端搜索
+  const handleServerSearch = useCallback(() => {
+    fetchLogsData({
+      page: 1, // 重置到第一页
+      pageSize: pagination.pageSize,
+      keyword: searchFilters.keyword || undefined,
+      field: searchFilters.searchType || undefined,
+      startDate: searchFilters.startDate || undefined,
+      endDate: searchFilters.endDate || undefined,
+    });
+  }, [fetchLogsData, pagination.pageSize, searchFilters]);
+
+  // 修改：补充获取日志，统一前端和服务器端的无感加载
+  const fetchAdditionalLogs = useCallback(async () => {
+    if (!paginationInfo || isLoadingMore) return;
+
+    try {
+      // 使用单独的加载状态，不影响主界面
+      setIsLoadingMore(true);
+
+      // 构建查询参数
+      const params: LogQueryParams = {
+        start: paginationInfo.end,
+        end: paginationInfo.end + pagination.pageSize,
       };
 
-      // 如果需要使用服务器端搜索，添加搜索参数
-      if (useServerSearch && !serverParams) {
+      // 根据不同模式添加不同参数
+      if (useServerSearch) {
+        // 服务器端搜索模式下，添加搜索参数
         if (searchFilters.keyword) {
           params.keyword = searchFilters.keyword;
           params.field = searchFilters.searchType || "";
@@ -127,125 +445,22 @@ export function LogViewer() {
         if (searchFilters.endDate) {
           params.endDate = searchFilters.endDate;
         }
+      } else {
+        // 前端搜索模式下，只需传递起止位置
+        if (searchFilters.keyword) {
+          params.keyword = searchFilters.keyword || undefined;
+          params.field = searchFilters.searchType || undefined;
+        }
+        if (searchFilters.startDate) {
+          params.startDate = searchFilters.startDate;
+        }
+        if (searchFilters.endDate) {
+          params.endDate = searchFilters.endDate;
+        }
       }
-
-      const response = await fetchLogs(params);
-
-      if (!response.success) {
-        throw new Error(response.error || "获取日志失败");
-      }
-
-      // 确保response.data是数组
-      const logsData = Array.isArray(response.data) ? response.data : [];
-      setLogs(logsData);
-
-      // 更新分页信息
-      if (response.pagination) {
-        setPaginationInfo(response.pagination);
-        // 同步当前页码
-        setPagination((prev) => ({
-          ...prev,
-          currentPage: response.pagination?.page || 1,
-        }));
-      }
-
-      // 重置选中的日志列表
-      setSelectedLogs([]);
-      setSelectAll(false);
-
-      // 提取所有日志中的键
-      if (logsData.length > 0) {
-        // 收集所有日志中的所有键
-        const allKeys = new Set<string>();
-        logsData.forEach((log: Log) => {
-          Object.keys(log.data).forEach((key) => allKeys.add(key));
-        });
-        setLogKeys(Array.from(allKeys));
-      }
-
-      setError(null);
-    } catch (err) {
-      console.error("获取日志失败:", err);
-      setError("获取日志数据失败，请稍后再试");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 新增: 处理分页切换
-  const handlePageChange = (pageNumber: number) => {
-    setPagination((prev) => ({
-      ...prev,
-      currentPage: pageNumber,
-    }));
-    // 如果使用服务器端搜索，重新获取数据
-    if (useServerSearch) {
-      fetchLogsData({
-        page: pageNumber,
-        pageSize: pagination.pageSize,
-        keyword: searchFilters.keyword || undefined,
-        field: searchFilters.searchType || undefined,
-        startDate: searchFilters.startDate || undefined,
-        endDate: searchFilters.endDate || undefined,
-      });
-    }
-  };
-
-  // 新增: 处理每页条数变更
-  const handlePageSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newPageSize = parseInt(e.target.value, 10);
-    setPagination((prev) => ({
-      ...prev,
-      pageSize: newPageSize,
-      currentPage: 1, // 重置到第一页
-    }));
-
-    // 如果使用服务器端搜索，重新获取数据
-    if (useServerSearch) {
-      fetchLogsData({
-        page: 1,
-        pageSize: newPageSize,
-        keyword: searchFilters.keyword || undefined,
-        field: searchFilters.searchType || undefined,
-        startDate: searchFilters.startDate || undefined,
-        endDate: searchFilters.endDate || undefined,
-      });
-    }
-  };
-
-  // 新增：切换搜索模式（前端/后端）
-  const toggleSearchMode = () => {
-    setUseServerSearch((prev) => !prev);
-  };
-
-  // 新增：使用服务器端搜索
-  const handleServerSearch = () => {
-    fetchLogsData({
-      page: 1, // 重置到第一页
-      pageSize: pagination.pageSize,
-      keyword: searchFilters.keyword || undefined,
-      field: searchFilters.searchType || undefined,
-      startDate: searchFilters.startDate || undefined,
-      endDate: searchFilters.endDate || undefined,
-    });
-  };
-
-  // 新增：补充获取日志
-  const fetchAdditionalLogs = async () => {
-    if (!paginationInfo) return;
-
-    try {
-      setLoading(true);
 
       // 获取当前列表之后的日志
-      const response = await fetchLogs({
-        start: paginationInfo.end,
-        end: paginationInfo.end + pagination.pageSize,
-        keyword: searchFilters.keyword || undefined,
-        field: searchFilters.searchType || undefined,
-        startDate: searchFilters.startDate || undefined,
-        endDate: searchFilters.endDate || undefined,
-      });
+      const response = await fetchLogs(params);
 
       if (!response.success) {
         throw new Error(response.error || "获取补充日志失败");
@@ -253,8 +468,15 @@ export function LogViewer() {
 
       const additionalLogs = Array.isArray(response.data) ? response.data : [];
 
+      // 检查是否还有更多数据
+      if (additionalLogs.length === 0) {
+        setHasMoreData(false);
+      }
+
       // 合并日志
-      setLogs((prev) => Array.isArray(prev) ? [...prev, ...additionalLogs] : additionalLogs);
+      setLogs((prev) =>
+        Array.isArray(prev) ? [...prev, ...additionalLogs] : additionalLogs
+      );
 
       // 更新分页信息
       if (response.pagination) {
@@ -266,72 +488,121 @@ export function LogViewer() {
       console.error("获取补充日志失败:", err);
       return 0;
     } finally {
-      setLoading(false);
+      setIsLoadingMore(false);
     }
-  };
+  }, [
+    paginationInfo,
+    isLoadingMore,
+    pagination.pageSize,
+    searchFilters,
+    useServerSearch,
+  ]);
 
   // 切换日志展开/折叠状态
-  const toggleExpand = (id: number) => {
-    setExpandedLog(expandedLog === id ? null : id);
-  };
+  const toggleExpand = useCallback(
+    (id: number) => {
+      setExpandedLog(expandedLog === id ? null : id);
+    },
+    [expandedLog]
+  );
 
   // 显示悬浮对象信息
-  const handleMouseEnter = (content: unknown, event: React.MouseEvent) => {
-    setHoverInfo({
-      content,
-      x: event.clientX,
-      y: event.clientY,
-    });
-  };
+  const handleMouseEnter = useCallback(
+    (content: unknown, event: React.MouseEvent) => {
+      setHoverInfo({
+        content,
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    []
+  );
 
   // 隐藏悬浮对象信息
-  const handleMouseLeave = () => {
+  const handleMouseLeave = useCallback(() => {
     // 仅当鼠标不在悬浮卡片中时才隐藏
     if (!isMouseInHoverCard) {
       setHoverInfo(null);
     }
-  };
+  }, [isMouseInHoverCard]);
 
   // 处理鼠标进入悬浮卡片
-  const handleHoverCardMouseEnter = () => {
+  const handleHoverCardMouseEnter = useCallback(() => {
     setIsMouseInHoverCard(true);
-  };
+  }, []);
 
   // 处理鼠标离开悬浮卡片
-  const handleHoverCardMouseLeave = () => {
+  const handleHoverCardMouseLeave = useCallback(() => {
     setIsMouseInHoverCard(false);
     setHoverInfo(null);
-  };
+  }, []);
 
   // 显示删除确认对话框
-  const handleDeleteClick = (id: number) => {
+  const handleDeleteClick = useCallback((id: number) => {
     setDeleteConfirm({ id, isDeleting: false });
     // 清除之前的成功/错误消息
     setDeleteError(null);
     setDeleteSuccess(null);
-  };
+  }, []);
 
   // 显示批量删除确认对话框
-  const handleBulkDeleteClick = () => {
+  const handleBulkDeleteClick = useCallback(() => {
     if (selectedLogs.length === 0) return;
 
     setDeleteConfirm({ id: selectedLogs, isDeleting: false });
     // 清除之前的成功/错误消息
     setDeleteError(null);
     setDeleteSuccess(null);
-  };
+  }, [selectedLogs]);
 
   // 取消删除
-  const handleCancelDelete = () => {
+  const handleCancelDelete = useCallback(() => {
     setDeleteConfirm(null);
-  };
+  }, []);
 
   // 确认删除（单个或批量）
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = useCallback(async () => {
     if (!deleteConfirm) return;
 
     try {
       setDeleteConfirm({ ...deleteConfirm, isDeleting: true });
+
+      // 处理删除成功后的操作
+      const handleDeleteSuccess = (
+        message: string,
+        idsToRemove: number | number[]
+      ) => {
+        setDeleteSuccess(message);
+
+        // 从本地状态中移除已删除的日志
+        setLogs((prevLogs) => {
+          const ids = Array.isArray(idsToRemove) ? idsToRemove : [idsToRemove];
+          return prevLogs.filter((log) => !ids.includes(log.id));
+        });
+
+        // 更新选中状态
+        if (Array.isArray(idsToRemove)) {
+          // 批量删除 - 重置选择状态
+          setSelectedLogs([]);
+          setSelectAll(false);
+        } else {
+          // 单个删除 - 从选中列表中移除
+          setSelectedLogs((prev) => prev.filter((id) => id !== idsToRemove));
+        }
+
+        // 如果当前展开的日志被删除，关闭展开视图
+        if (expandedLog !== null) {
+          const ids = Array.isArray(idsToRemove) ? idsToRemove : [idsToRemove];
+          if (ids.includes(expandedLog)) {
+            setExpandedLog(null);
+          }
+        }
+
+        // 3秒后清除成功消息
+        setTimeout(() => {
+          setDeleteSuccess(null);
+        }, 3000);
+      };
 
       // 判断是单个删除还是批量删除
       if (Array.isArray(deleteConfirm.id)) {
@@ -343,31 +614,10 @@ export function LogViewer() {
         }
 
         // 删除成功
-        setDeleteSuccess(
-          `已成功删除 ${
-            (response.data as { count: number })?.count ||
-            deleteConfirm.id.length
-          } 条日志`
-        );
-
-        // 从本地状态中移除已删除的日志
-        setLogs((prevLogs) => {
-          // 这里我们确定deleteConfirm.id是一个数组
-          const idsToDelete = deleteConfirm.id as number[];
-          return prevLogs.filter((log) => !idsToDelete.includes(log.id));
-        });
-
-        // 重置选中状态
-        setSelectedLogs([]);
-        setSelectAll(false);
-
-        // 如果当前展开的日志在被删除列表中，则关闭展开视图
-        if (expandedLog !== null) {
-          const idsToDelete = deleteConfirm.id as number[];
-          if (idsToDelete.includes(expandedLog)) {
-            setExpandedLog(null);
-          }
-        }
+        const count =
+          (response.data as { count: number })?.count ||
+          deleteConfirm.id.length;
+        handleDeleteSuccess(`已成功删除 ${count} 条日志`, deleteConfirm.id);
       } else {
         // 单个删除
         const response = await deleteLog(deleteConfirm.id);
@@ -377,26 +627,11 @@ export function LogViewer() {
         }
 
         // 删除成功
-        setDeleteSuccess(`日志(ID: ${deleteConfirm.id})已成功删除`);
-
-        // 从本地状态中移除已删除的日志
-        setLogs((prevLogs) =>
-          prevLogs.filter((log) => log.id !== deleteConfirm.id)
+        handleDeleteSuccess(
+          `日志(ID: ${deleteConfirm.id})已成功删除`,
+          deleteConfirm.id
         );
-
-        // 从选中列表中移除
-        setSelectedLogs((prev) => prev.filter((id) => id !== deleteConfirm.id));
-
-        // 如果当前展开的是被删除的日志，则关闭展开视图
-        if (expandedLog === deleteConfirm.id) {
-          setExpandedLog(null);
-        }
       }
-
-      // 3秒后清除成功消息
-      setTimeout(() => {
-        setDeleteSuccess(null);
-      }, 3000);
     } catch (err) {
       console.error("删除日志失败:", err);
       if (err instanceof Error) {
@@ -407,29 +642,32 @@ export function LogViewer() {
     } finally {
       setDeleteConfirm(null);
     }
-  };
+  }, [deleteConfirm, expandedLog]);
 
   // 处理单个日志选择
-  const handleSelectLog = (id: number, checked: boolean) => {
+  const handleSelectLog = useCallback((id: number, checked: boolean) => {
     if (checked) {
       setSelectedLogs((prev) => [...prev, id]);
     } else {
       setSelectedLogs((prev) => prev.filter((logId) => logId !== id));
       setSelectAll(false);
     }
-  };
+  }, []);
 
   // 处理全选/取消全选
-  const handleSelectAll = (checked: boolean) => {
-    setSelectAll(checked);
-    if (checked) {
-      // 全选所有日志
-      setSelectedLogs(logs.map((log) => log.id));
-    } else {
-      // 取消全选
-      setSelectedLogs([]);
-    }
-  };
+  const handleSelectAll = useCallback(
+    (checked: boolean) => {
+      setSelectAll(checked);
+      if (checked) {
+        // 全选所有日志
+        setSelectedLogs(logs.map((log) => log.id));
+      } else {
+        // 取消全选
+        setSelectedLogs([]);
+      }
+    },
+    [logs]
+  );
 
   // 当日志数据更新时，更新全选状态
   useEffect(() => {
@@ -441,7 +679,7 @@ export function LogViewer() {
   }, [selectedLogs, logs]);
 
   // 处理排序
-  const handleSort = (key: string) => {
+  const handleSort = useCallback((key: string) => {
     setSortConfig((prevConfig) => {
       if (prevConfig.key === key) {
         // 如果已经在按这个键排序，切换排序方向
@@ -454,7 +692,7 @@ export function LogViewer() {
         return { key, direction: "asc" };
       }
     });
-  };
+  }, []);
 
   // 获取排序图标
   const getSortIcon = (key: string) => {
@@ -500,21 +738,22 @@ export function LogViewer() {
   };
 
   // 修改 handleSearchFilterChange 函数
-  const handleSearchFilterChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setSearchFilters((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+  const handleSearchFilterChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      const { name, value } = e.target;
+      setSearchFilters((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
 
-    // 如果是服务端搜索，不要在这里立即触发搜索
-    // 用户需要点击"搜索"按钮来触发
-  };
+      // 如果是服务端搜索，不要在这里立即触发搜索
+      // 用户需要点击"搜索"按钮来触发
+    },
+    []
+  );
 
   // 修改 handleResetFilters 函数
-  const handleResetFilters = () => {
+  const handleResetFilters = useCallback(() => {
     setSearchFilters({
       keyword: "",
       startDate: "",
@@ -530,100 +769,161 @@ export function LogViewer() {
         pageSize: pagination.pageSize,
       });
     }
-  };
+  }, [useServerSearch, pagination.pageSize]);
 
-  // 过滤日志函数
-  const filterLogs = (logs: Log[]) => {
-    if (!Array.isArray(logs) || logs.length === 0) {
-      return [];
-    }
-    
-    return logs.filter((log) => {
-      // 关键词过滤
-      if (searchFilters.keyword) {
-        const isMatching = (() => {
-          // 根据搜索类型过滤
-          if (searchFilters.searchType) {
-            if (searchFilters.searchType === "id") {
-              // 按ID搜索
-              return String(log.id)
-                .toLowerCase()
-                .includes(searchFilters.keyword.toLowerCase());
-            } else if (searchFilters.searchType === "time") {
-              // 按时间搜索
-              return new Date(log.created_at)
-                .toLocaleString()
-                .toLowerCase()
-                .includes(searchFilters.keyword.toLowerCase());
-            } else {
-              // 按特定字段搜索
-              const value = log.data[searchFilters.searchType];
-              if (value === undefined || value === null) {
-                return false;
-              }
+  // 排序日志 - 使用 useMemo 优化
+  const sortedLogs = useMemo(() => {
+    if (!Array.isArray(logs) || logs.length === 0) return [];
 
-              if (typeof value === "object") {
-                // 对象类型：转为JSON字符串进行搜索
-                return JSON.stringify(value)
+    return [...logs].sort((a, b) => {
+      if (sortConfig.key === "id" || sortConfig.key === "created_at") {
+        // 处理内置属性排序
+        const valueA =
+          sortConfig.key === "id" ? a.id : new Date(a.created_at).getTime();
+        const valueB =
+          sortConfig.key === "id" ? b.id : new Date(b.created_at).getTime();
+
+        if (sortConfig.direction === "asc") {
+          return valueA - valueB;
+        } else {
+          return valueB - valueA;
+        }
+      } else {
+        // 处理 data 内属性排序
+        const valueA = a.data[sortConfig.key];
+        const valueB = b.data[sortConfig.key];
+
+        // 处理不同类型的值
+        if (valueA === undefined && valueB === undefined) return 0;
+        if (valueA === undefined) return 1;
+        if (valueB === undefined) return -1;
+
+        if (typeof valueA === "number" && typeof valueB === "number") {
+          // 修复数字排序：确保进行数值比较
+          return sortConfig.direction === "asc"
+            ? Number(valueA) - Number(valueB)
+            : Number(valueB) - Number(valueA);
+        } else {
+          // 尝试将字符串转换为数字进行比较
+          const numA = !isNaN(Number(valueA)) ? Number(valueA) : null;
+          const numB = !isNaN(Number(valueB)) ? Number(valueB) : null;
+
+          if (numA !== null && numB !== null) {
+            // 如果两个值都可以转换为数字，进行数值比较
+            return sortConfig.direction === "asc" ? numA - numB : numB - numA;
+          } else {
+            // 否则进行字符串比较
+            const strA = String(valueA).toLowerCase();
+            const strB = String(valueB).toLowerCase();
+            return sortConfig.direction === "asc"
+              ? strA.localeCompare(strB)
+              : strB.localeCompare(strA);
+          }
+        }
+      }
+    });
+  }, [logs, sortConfig.key, sortConfig.direction]);
+
+  // 过滤日志函数 - 使用 useCallback 优化
+  const filterLogs = useCallback(
+    (logs: Log[]) => {
+      if (!Array.isArray(logs) || logs.length === 0) {
+        return [];
+      }
+
+      return logs.filter((log) => {
+        // 关键词过滤
+        if (searchFilters.keyword) {
+          const isMatching = (() => {
+            // 根据搜索类型过滤
+            if (searchFilters.searchType) {
+              if (searchFilters.searchType === "id") {
+                // 按ID搜索
+                return String(log.id)
+                  .toLowerCase()
+                  .includes(searchFilters.keyword.toLowerCase());
+              } else if (searchFilters.searchType === "time") {
+                // 按时间搜索
+                return new Date(log.created_at)
+                  .toLocaleString()
                   .toLowerCase()
                   .includes(searchFilters.keyword.toLowerCase());
               } else {
-                // 基本类型：转为字符串进行搜索
-                return String(value)
-                  .toLowerCase()
-                  .includes(searchFilters.keyword.toLowerCase());
+                // 按特定字段搜索
+                const value = log.data[searchFilters.searchType];
+                if (value === undefined || value === null) {
+                  return false;
+                }
+
+                if (typeof value === "object") {
+                  // 对象类型：转为JSON字符串进行搜索
+                  return JSON.stringify(value)
+                    .toLowerCase()
+                    .includes(searchFilters.keyword.toLowerCase());
+                } else {
+                  // 基本类型：转为字符串进行搜索
+                  return String(value)
+                    .toLowerCase()
+                    .includes(searchFilters.keyword.toLowerCase());
+                }
               }
+            } else {
+              // 无类型，全局搜索
+              return isLogMatchingKeyword(log, searchFilters.keyword);
             }
-          } else {
-            // 无类型，全局搜索
-            return isLogMatchingKeyword(log, searchFilters.keyword);
+          })();
+
+          // 根据搜索模式决定是包含还是排除
+          if (searchFilters.searchMode === "include" && !isMatching) {
+            return false;
           }
-        })();
-
-        // 根据搜索模式决定是包含还是排除
-        if (searchFilters.searchMode === "include" && !isMatching) {
-          return false;
+          if (searchFilters.searchMode === "exclude" && isMatching) {
+            return false;
+          }
         }
-        if (searchFilters.searchMode === "exclude" && isMatching) {
-          return false;
+
+        // 日期范围过滤
+        const logDate = new Date(log.created_at).getTime();
+
+        // 开始日期过滤
+        if (searchFilters.startDate) {
+          const startDate = new Date(searchFilters.startDate).setHours(
+            0,
+            0,
+            0,
+            0
+          );
+          if (logDate < startDate) {
+            return false;
+          }
         }
-      }
 
-      // 日期范围过滤
-      const logDate = new Date(log.created_at).getTime();
-
-      // 开始日期过滤
-      if (searchFilters.startDate) {
-        const startDate = new Date(searchFilters.startDate).setHours(
-          0,
-          0,
-          0,
-          0
-        );
-        if (logDate < startDate) {
-          return false;
+        // 结束日期过滤
+        if (searchFilters.endDate) {
+          const endDate = new Date(searchFilters.endDate).setHours(
+            23,
+            59,
+            59,
+            999
+          );
+          if (logDate > endDate) {
+            return false;
+          }
         }
-      }
 
-      // 结束日期过滤
-      if (searchFilters.endDate) {
-        const endDate = new Date(searchFilters.endDate).setHours(
-          23,
-          59,
-          59,
-          999
-        );
-        if (logDate > endDate) {
-          return false;
-        }
-      }
+        return true;
+      });
+    },
+    [searchFilters]
+  );
 
-      return true;
-    });
-  };
+  // 新增：使用 useMemo 优化过滤并排序日志
+  const filteredAndSortedLogs = useMemo(() => {
+    return filterLogs(sortedLogs);
+  }, [filterLogs, sortedLogs]);
 
-  // 新增：检查日志是否包含关键词
-  const isLogMatchingKeyword = (log: Log, keyword: string) => {
+  // 新增：检查日志是否包含关键词 - 使用 useCallback 优化
+  const isLogMatchingKeyword = useCallback((log: Log, keyword: string) => {
     const keywordLower = keyword.toLowerCase();
 
     // 检查ID
@@ -660,91 +960,41 @@ export function LogViewer() {
     }
 
     return false;
-  };
-
-  // 排序日志
-  const sortedLogs = Array.isArray(logs) ? [...logs].sort((a, b) => {
-    if (sortConfig.key === "id" || sortConfig.key === "created_at") {
-      // 处理内置属性排序
-      const valueA =
-        sortConfig.key === "id" ? a.id : new Date(a.created_at).getTime();
-      const valueB =
-        sortConfig.key === "id" ? b.id : new Date(b.created_at).getTime();
-
-      if (sortConfig.direction === "asc") {
-        return valueA - valueB;
-      } else {
-        return valueB - valueA;
-      }
-    } else {
-      // 处理 data 内属性排序
-      const valueA = a.data[sortConfig.key];
-      const valueB = b.data[sortConfig.key];
-
-      // 处理不同类型的值
-      if (valueA === undefined && valueB === undefined) return 0;
-      if (valueA === undefined) return 1;
-      if (valueB === undefined) return -1;
-
-      if (typeof valueA === "number" && typeof valueB === "number") {
-        // 修复数字排序：确保进行数值比较
-        return sortConfig.direction === "asc"
-          ? Number(valueA) - Number(valueB)
-          : Number(valueB) - Number(valueA);
-      } else {
-        // 尝试将字符串转换为数字进行比较
-        const numA = !isNaN(Number(valueA)) ? Number(valueA) : null;
-        const numB = !isNaN(Number(valueB)) ? Number(valueB) : null;
-
-        if (numA !== null && numB !== null) {
-          // 如果两个值都可以转换为数字，进行数值比较
-          return sortConfig.direction === "asc" ? numA - numB : numB - numA;
-        } else {
-          // 否则进行字符串比较
-          const strA = String(valueA).toLowerCase();
-          const strB = String(valueB).toLowerCase();
-          return sortConfig.direction === "asc"
-            ? strA.localeCompare(strB)
-            : strB.localeCompare(strA);
-        }
-      }
-    }
-  }) : [];
-
-  // 新增：过滤并排序日志
-  const filteredAndSortedLogs = filterLogs(sortedLogs);
+  }, []);
 
   // 页面加载时获取日志
   useEffect(() => {
     fetchLogsData();
-  }, []);
+  }, [fetchLogsData]);
 
   // 新增：设置无限滚动的IntersectionObserver
   useEffect(() => {
-    // 仅在前端搜索模式下启用无限滚动
-    if (useServerSearch || !loaderRef.current) return;
+    // 任何模式下都启用无限滚动
+    if (!loaderRef.current) return;
 
     // 创建新的IntersectionObserver
-    observerRef.current = new IntersectionObserver(
+    const observer = new IntersectionObserver(
       (entries) => {
-        // 当观察的元素进入视图时
-        if (entries[0].isIntersecting && !loading) {
+        // 当观察的元素进入视图时，且没有正在进行加载更多的操作
+        if (entries[0].isIntersecting && !isLoadingMore && hasMoreData) {
+          console.log("触发无感加载...");
           fetchAdditionalLogs();
         }
       },
-      { threshold: 0.1 } // 当目标元素有10%进入视口时触发
+      {
+        threshold: 0.1, // 当目标元素有10%进入视口时触发
+        root: tableContainerRef.current, // 观察表格容器内的滚动
+      }
     );
 
     // 开始观察加载器元素
-    observerRef.current.observe(loaderRef.current);
+    observer.observe(loaderRef.current);
 
     // 清理函数
     return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
+      observer.disconnect();
     };
-  }, [useServerSearch, loading]); // 依赖项包括搜索模式和加载状态
+  }, [isLoadingMore, fetchAdditionalLogs, hasMoreData]);
 
   // 登出功能
   const handleLogout = () => {
@@ -757,7 +1007,7 @@ export function LogViewer() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-100 dark:border-gray-700"
+        className="max-h-[100vh] bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-100 dark:border-gray-700"
       >
         <div className="flex justify-between items-center mb-6 border-b border-gray-100 dark:border-gray-700 pb-4">
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center">
@@ -1282,7 +1532,10 @@ export function LogViewer() {
             transition={{ delay: 0.2 }}
             className="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm"
           >
-            <div className="max-h-[1000px] overflow-y-auto">
+            <div
+              className="max-h-[68vh] overflow-y-auto"
+              ref={tableContainerRef}
+            >
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0 z-10 shadow-sm">
                   <tr>
@@ -1620,6 +1873,21 @@ export function LogViewer() {
                   ))}
                 </tbody>
               </table>
+
+              {/* 无限滚动加载器 - 放在表格内容末尾，但不显示加载动画 */}
+              {hasMoreData && (
+                <div
+                  ref={loaderRef}
+                  className="h-10 w-full opacity-0" // 透明的触发元素，用户不可见
+                ></div>
+              )}
+
+              {/* 显示没有更多数据的提示 */}
+              {!hasMoreData && filteredAndSortedLogs.length > 0 && (
+                <div className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                  已加载全部数据
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -1627,153 +1895,23 @@ export function LogViewer() {
         {/* 悬浮显示对象信息 */}
         <AnimatePresence>
           {hoverInfo && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.15 }}
-              ref={hoverCardRef}
-              className="fixed bg-white dark:bg-gray-800 shadow-xl rounded-lg p-4 border border-gray-200 dark:border-gray-700 z-50 max-w-md"
-              style={{
-                top: `${hoverInfo.y + 10}px`,
-                left: `${hoverInfo.x + 10}px`,
-              }}
+            <HoverCard
+              hoverInfo={hoverInfo}
               onMouseEnter={handleHoverCardMouseEnter}
               onMouseLeave={handleHoverCardMouseLeave}
-            >
-              <div className="flex justify-between items-center mb-2 pb-1 border-b border-gray-100 dark:border-gray-700">
-                <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                  对象数据
-                </h4>
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  点击外部关闭
-                </span>
-              </div>
-              <pre className="whitespace-pre-wrap text-sm overflow-x-auto max-h-60 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-md text-gray-700 dark:text-gray-300">
-                {JSON.stringify(hoverInfo.content, null, 2)}
-              </pre>
-            </motion.div>
+              ref={hoverCardRef}
+            />
           )}
         </AnimatePresence>
 
         {/* 删除确认对话框 */}
         <AnimatePresence>
           {deleteConfirm && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50"
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ duration: 0.2 }}
-                className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 max-w-md mx-4"
-              >
-                <div className="flex items-center mb-4 text-red-500">
-                  <svg
-                    className="w-8 h-8 mr-3"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                    ></path>
-                  </svg>
-                  <h3 className="text-xl font-bold">确认删除</h3>
-                </div>
-
-                <p className="mb-6 text-gray-600 dark:text-gray-300">
-                  {Array.isArray(deleteConfirm.id) ? (
-                    <>
-                      您确定要删除选中的{" "}
-                      <span className="font-semibold text-red-500">
-                        {deleteConfirm.id.length}
-                      </span>{" "}
-                      条日志吗？此操作无法撤销。
-                    </>
-                  ) : (
-                    <>
-                      您确定要删除ID为{" "}
-                      <span className="font-semibold text-red-500">
-                        {deleteConfirm.id}
-                      </span>{" "}
-                      的日志吗？此操作无法撤销。
-                    </>
-                  )}
-                </p>
-
-                <div className="flex justify-end space-x-3">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleCancelDelete}
-                    disabled={deleteConfirm.isDeleting}
-                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200"
-                  >
-                    取消
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleConfirmDelete}
-                    disabled={deleteConfirm.isDeleting}
-                    className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200 flex items-center shadow-md"
-                  >
-                    {deleteConfirm.isDeleting ? (
-                      <>
-                        <svg
-                          className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-                        处理中...
-                      </>
-                    ) : (
-                      <>
-                        <svg
-                          className="w-4 h-4 mr-2"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          ></path>
-                        </svg>
-                        确认删除
-                      </>
-                    )}
-                  </motion.button>
-                </div>
-              </motion.div>
-            </motion.div>
+            <DeleteConfirmDialog
+              deleteConfirm={deleteConfirm}
+              onCancel={handleCancelDelete}
+              onConfirm={handleConfirmDelete}
+            />
           )}
         </AnimatePresence>
 
@@ -1815,146 +1953,6 @@ export function LogViewer() {
             </div>
 
             {/* 分页按钮 */}
-            {paginationInfo &&
-              paginationInfo.totalPages > 1 &&
-              useServerSearch && (
-                <div className="flex items-center space-x-1">
-                  {/* 首页按钮 */}
-                  <button
-                    onClick={() => handlePageChange(1)}
-                    disabled={paginationInfo.page === 1}
-                    className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                      paginationInfo.page === 1
-                        ? "text-gray-400 cursor-not-allowed"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
-                      ></path>
-                    </svg>
-                  </button>
-
-                  {/* 上一页按钮 */}
-                  <button
-                    onClick={() => handlePageChange(paginationInfo.page - 1)}
-                    disabled={paginationInfo.page === 1}
-                    className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                      paginationInfo.page === 1
-                        ? "text-gray-400 cursor-not-allowed"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M15 19l-7-7 7-7"
-                      ></path>
-                    </svg>
-                  </button>
-
-                  {/* 页码 */}
-                  {Array.from({
-                    length: Math.min(5, paginationInfo.totalPages),
-                  }).map((_, i) => {
-                    // 显示当前页及其前后共5页
-                    let pageNum = paginationInfo.page - 2 + i;
-
-                    // 调整显示的页码，确保始终显示5个页码（如果总页数>=5）
-                    if (pageNum < 1) pageNum = i + 1;
-                    if (pageNum > paginationInfo.totalPages)
-                      pageNum = paginationInfo.totalPages - (4 - i);
-
-                    // 确保页码在有效范围内
-                    if (pageNum < 1 || pageNum > paginationInfo.totalPages)
-                      return null;
-
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => handlePageChange(pageNum)}
-                        className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                          pageNum === paginationInfo.page
-                            ? "bg-blue-500 text-white"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-
-                  {/* 下一页按钮 */}
-                  <button
-                    onClick={() => handlePageChange(paginationInfo.page + 1)}
-                    disabled={paginationInfo.page === paginationInfo.totalPages}
-                    className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                      paginationInfo.page === paginationInfo.totalPages
-                        ? "text-gray-400 cursor-not-allowed"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M9 5l7 7-7 7"
-                      ></path>
-                    </svg>
-                  </button>
-
-                  {/* 末页按钮 */}
-                  <button
-                    onClick={() => handlePageChange(paginationInfo.totalPages)}
-                    disabled={paginationInfo.page === paginationInfo.totalPages}
-                    className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                      paginationInfo.page === paginationInfo.totalPages
-                        ? "text-gray-400 cursor-not-allowed"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M13 5l7 7-7 7M5 5l7 7-7 7"
-                      ></path>
-                    </svg>
-                  </button>
-                </div>
-              )}
 
             {/* 搜索模式切换 */}
             <div className="flex items-center mt-4 md:mt-0 md:ml-4">
@@ -1979,194 +1977,8 @@ export function LogViewer() {
               {/* 表格底部 */}
               <div className="mt-4 border-t border-gray-100 dark:border-gray-700 pt-4 flex flex-col md:flex-row justify-between items-center">
                 {/* 分页信息提示 */}
-                {paginationInfo && (
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
-                    显示 {paginationInfo.start + 1} 到{" "}
-                    {Math.min(
-                      paginationInfo.end,
-                      paginationInfo.totalLogs
-                    )}{" "}
-                    条，共 {paginationInfo.totalLogs} 条记录
-                  </div>
-                )}
 
-                {/* 无限滚动加载器 - 放在表格底部 */}
-                {!useServerSearch && (
-                  <div
-                    ref={loaderRef}
-                    className="py-4 flex justify-center items-center w-full"
-                  >
-                    {loading && (
-                      <div className="flex items-center justify-center">
-                        <svg
-                          className="animate-spin h-5 w-5 mr-2 text-blue-500"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                          加载中...
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 页码选择器 - 仅当有分页信息且使用服务器端搜索时显示 */}
-                {paginationInfo &&
-                  paginationInfo.totalPages > 1 &&
-                  useServerSearch && (
-                    <div className="flex items-center space-x-1">
-                      {/* 首页按钮 */}
-                      <button
-                        onClick={() => handlePageChange(1)}
-                        disabled={paginationInfo.page === 1}
-                        className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                          paginationInfo.page === 1
-                            ? "text-gray-400 cursor-not-allowed"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
-                          ></path>
-                        </svg>
-                      </button>
-
-                      {/* 上一页按钮 */}
-                      <button
-                        onClick={() => handlePageChange(paginationInfo.page - 1)}
-                        disabled={paginationInfo.page === 1}
-                        className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                          paginationInfo.page === 1
-                            ? "text-gray-400 cursor-not-allowed"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M15 19l-7-7 7-7"
-                          ></path>
-                        </svg>
-                      </button>
-
-                      {/* 页码 */}
-                      {Array.from({
-                        length: Math.min(5, paginationInfo.totalPages),
-                      }).map((_, i) => {
-                        // 显示当前页及其前后共5页
-                        let pageNum = paginationInfo.page - 2 + i;
-
-                        // 调整显示的页码，确保始终显示5个页码（如果总页数>=5）
-                        if (pageNum < 1) pageNum = i + 1;
-                        if (pageNum > paginationInfo.totalPages)
-                          pageNum = paginationInfo.totalPages - (4 - i);
-
-                        // 确保页码在有效范围内
-                        if (pageNum < 1 || pageNum > paginationInfo.totalPages)
-                          return null;
-
-                        return (
-                          <button
-                            key={pageNum}
-                            onClick={() => handlePageChange(pageNum)}
-                            className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                              pageNum === paginationInfo.page
-                                ? "bg-blue-500 text-white"
-                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                            }`}
-                          >
-                            {pageNum}
-                          </button>
-                        );
-                      })}
-
-                      {/* 下一页按钮 */}
-                      <button
-                        onClick={() => handlePageChange(paginationInfo.page + 1)}
-                        disabled={paginationInfo.page === paginationInfo.totalPages}
-                        className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                          paginationInfo.page === paginationInfo.totalPages
-                            ? "text-gray-400 cursor-not-allowed"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M9 5l7 7-7 7"
-                          ></path>
-                        </svg>
-                      </button>
-
-                      {/* 末页按钮 */}
-                      <button
-                        onClick={() => handlePageChange(paginationInfo.totalPages)}
-                        disabled={paginationInfo.page === paginationInfo.totalPages}
-                        className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                          paginationInfo.page === paginationInfo.totalPages
-                            ? "text-gray-400 cursor-not-allowed"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M13 5l7 7-7 7M5 5l7 7-7 7"
-                          ></path>
-                        </svg>
-                      </button>
-                    </div>
-                  )}
+                {/* 删除服务器端搜索的分页控件 */}
 
                 {/* 服务端搜索按钮 */}
                 {useServerSearch && searchFilters.keyword && (
