@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { initDatabase, sql } from "@/lib/db";
-import { hybridDecrypt, hybridEncrypt } from "@/lib/hybridCrypto";
+import { hybridDecrypt, hybridEncrypt, getClientPublicKey } from "@/lib/hybridCrypto";
 import { generateRSAKeyPair } from "@/lib/rsaUtils";
+import { cookies } from "next/headers";
 
 // 初始化数据库
 initDatabase().catch(console.error);
@@ -9,9 +10,21 @@ initDatabase().catch(console.error);
 // 确保RSA密钥已生成
 generateRSAKeyPair();
 
+// 获取会话ID从cookie
+async function getSessionId(): Promise<string | undefined> {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("client_session_id");
+  return sessionCookie?.value;
+}
+
 // GET 请求处理程序 - 获取日志（支持分页和搜索）
 export async function GET(request: NextRequest) {
   try {
+    // 获取客户端会话ID
+    const sessionId = await getSessionId();
+    // 获取客户端公钥
+    const clientPublicKey = sessionId ? getClientPublicKey(sessionId) : undefined;
+
     // 获取URL参数
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get("page") || "1", 10);
@@ -91,8 +104,8 @@ export async function GET(request: NextRequest) {
       LIMIT ${limit} OFFSET ${offset}
     `;
 
-    // 加密日志数据
-    const encryptedData = hybridEncrypt({
+    // 准备响应数据
+    const responseData = {
       success: true,
       data: logs,
       pagination: {
@@ -103,7 +116,12 @@ export async function GET(request: NextRequest) {
         start,
         end: start + (Array.isArray(logs) ? logs.length : 0),
       },
-    });
+    };
+
+    // 加密日志数据，如果有客户端公钥则使用混合加密
+    const encryptedData = clientPublicKey
+      ? hybridEncrypt(responseData, clientPublicKey)
+      : hybridEncrypt(responseData); // 回退到旧方式
 
     // 返回二进制数据
     return new Response(encryptedData, {
@@ -115,11 +133,14 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("获取日志失败:", error);
 
+    // 获取客户端会话ID和公钥
+    const sessionId = await getSessionId();
+    const clientPublicKey = sessionId ? getClientPublicKey(sessionId) : undefined;
+
     // 加密错误消息
-    const encryptedError = hybridEncrypt({
-      success: false,
-      error: "获取日志失败",
-    });
+    const encryptedError = clientPublicKey
+      ? hybridEncrypt({ success: false, error: "获取日志失败" }, clientPublicKey)
+      : hybridEncrypt({ success: false, error: "获取日志失败" });
 
     // 返回二进制数据
     return new Response(encryptedError, {
@@ -152,12 +173,22 @@ export async function POST(request: NextRequest) {
       )}) RETURNING *
     `;
 
+    // 获取客户端会话ID和公钥
+    const sessionId = await getSessionId();
+    const clientPublicKey = sessionId ? getClientPublicKey(sessionId) : undefined;
+
     // 加密成功响应
-    const encryptedResponse = hybridEncrypt({
-      success: true,
-      message: "日志保存成功",
-      data: result[0],
-    });
+    const encryptedResponse = clientPublicKey
+      ? hybridEncrypt({
+          success: true,
+          message: "日志保存成功",
+          data: result[0],
+        }, clientPublicKey)
+      : hybridEncrypt({
+          success: true,
+          message: "日志保存成功",
+          data: result[0],
+        });
 
     // 返回二进制数据
     return new Response(encryptedResponse, {
@@ -167,11 +198,14 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("保存日志失败:", error);
 
+    // 获取客户端会话ID和公钥
+    const sessionId = await getSessionId();
+    const clientPublicKey = sessionId ? getClientPublicKey(sessionId) : undefined;
+
     // 加密错误消息
-    const encryptedError = hybridEncrypt({
-      success: false,
-      error: "保存日志失败",
-    });
+    const encryptedError = clientPublicKey
+      ? hybridEncrypt({ success: false, error: "保存日志失败" }, clientPublicKey)
+      : hybridEncrypt({ success: false, error: "保存日志失败" });
 
     // 返回二进制数据
     return new Response(encryptedError, {
@@ -184,6 +218,10 @@ export async function POST(request: NextRequest) {
 // DELETE 请求处理程序 - 删除指定ID的日志
 export async function DELETE(request: NextRequest) {
   try {
+    // 获取客户端会话ID和公钥
+    const sessionId = await getSessionId();
+    const clientPublicKey = sessionId ? getClientPublicKey(sessionId) : undefined;
+
     // 从URL中获取要删除的日志ID
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
@@ -198,10 +236,9 @@ export async function DELETE(request: NextRequest) {
         .filter((id) => !isNaN(id));
 
       if (idArray.length === 0) {
-        const encryptedError = hybridEncrypt({
-          success: false,
-          error: "无效的日志ID参数",
-        });
+        const encryptedError = clientPublicKey
+          ? hybridEncrypt({ success: false, error: "无效的日志ID参数" }, clientPublicKey)
+          : hybridEncrypt({ success: false, error: "无效的日志ID参数" });
 
         return new Response(encryptedError, {
           status: 400,
@@ -215,11 +252,17 @@ export async function DELETE(request: NextRequest) {
       `;
 
       // 加密成功响应
-      const encryptedResponse = hybridEncrypt({
-        success: true,
-        message: "日志批量删除成功",
-        data: { count: result.length, ids: result.map((row) => row.id) },
-      });
+      const encryptedResponse = clientPublicKey
+        ? hybridEncrypt({
+            success: true,
+            message: "日志批量删除成功",
+            data: { count: result.length, ids: result.map((row) => row.id) },
+          }, clientPublicKey)
+        : hybridEncrypt({
+            success: true,
+            message: "日志批量删除成功",
+            data: { count: result.length, ids: result.map((row) => row.id) },
+          });
 
       return new Response(encryptedResponse, {
         status: 200,
@@ -234,10 +277,9 @@ export async function DELETE(request: NextRequest) {
 
       // 检查是否找到并删除了日志
       if (result.length === 0) {
-        const encryptedError = hybridEncrypt({
-          success: false,
-          error: "未找到指定ID的日志",
-        });
+        const encryptedError = clientPublicKey
+          ? hybridEncrypt({ success: false, error: "未找到指定ID的日志" }, clientPublicKey)
+          : hybridEncrypt({ success: false, error: "未找到指定ID的日志" });
 
         return new Response(encryptedError, {
           status: 404,
@@ -246,21 +288,26 @@ export async function DELETE(request: NextRequest) {
       }
 
       // 加密成功响应
-      const encryptedResponse = hybridEncrypt({
-        success: true,
-        message: "日志删除成功",
-        data: { id: result[0].id },
-      });
+      const encryptedResponse = clientPublicKey
+        ? hybridEncrypt({
+            success: true,
+            message: "日志删除成功",
+            data: { id: result[0].id },
+          }, clientPublicKey)
+        : hybridEncrypt({
+            success: true,
+            message: "日志删除成功",
+            data: { id: result[0].id },
+          });
 
       return new Response(encryptedResponse, {
         status: 200,
         headers: { "Content-Type": "application/octet-stream" },
       });
     } else {
-      const encryptedError = hybridEncrypt({
-        success: false,
-        error: "缺少日志ID参数",
-      });
+      const encryptedError = clientPublicKey
+        ? hybridEncrypt({ success: false, error: "缺少日志ID参数" }, clientPublicKey)
+        : hybridEncrypt({ success: false, error: "缺少日志ID参数" });
 
       return new Response(encryptedError, {
         status: 400,
@@ -270,11 +317,14 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error("删除日志失败:", error);
 
+    // 获取客户端会话ID和公钥
+    const sessionId = await getSessionId();
+    const clientPublicKey = sessionId ? getClientPublicKey(sessionId) : undefined;
+
     // 加密错误消息
-    const encryptedError = hybridEncrypt({
-      success: false,
-      error: "删除日志失败",
-    });
+    const encryptedError = clientPublicKey
+      ? hybridEncrypt({ success: false, error: "删除日志失败" }, clientPublicKey)
+      : hybridEncrypt({ success: false, error: "删除日志失败" });
 
     return new Response(encryptedError, {
       status: 500,
